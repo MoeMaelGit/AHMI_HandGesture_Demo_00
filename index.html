@@ -948,6 +948,10 @@
 
   // ── Space bar fallback ──────────────────────────────────────────────────
   bridge.setupSpaceFallback(() => {
+    // If a warning overlay is up (camera denied / MediaPipe blocked), hide it
+    // so the taxi animation isn't obscured by it.
+    document.getElementById('warn-camera').classList.add('hidden');
+    document.getElementById('warn-mediapipe').classList.add('hidden');
     animation.play(() => {
       bridge.trigger();
       setTimeout(() => {
@@ -970,13 +974,24 @@
   document.addEventListener('pointerdown', unlockAudio, { once: false });
 
   // ── Start detection ─────────────────────────────────────────────────────
+  // Pre-flight: getUserMedia requires HTTPS (or localhost) and a supporting browser.
+  // If it's missing, surface the existing camera-warning overlay so the Space-bar
+  // fallback path is visible instead of silently sitting on a black screen.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    ui.showWarning('camera_error');
+    statusLbl.textContent = 'DEMO MODE';
+    return;
+  }
+
   const initOk = await detector.init(video, canvas);
   if (initOk) {
     const startOk = await detector.start();
     if (!startOk) {
+      ui.showWarning('camera_error');
       statusLbl.textContent = 'CAMERA ERROR';
     }
   } else {
+    ui.showWarning('mediapipe_unavailable');
     statusLbl.textContent = 'DEMO MODE';
   }
 })();

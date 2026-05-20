@@ -1,4 +1,7 @@
 // Dispatches ArrowRight to advance Figma Slides; Space bar acts as manual fallback.
+// If the URL hash carries a `#next=<https-url>` fragment, also navigates the tab there
+// after the animation — that's how the Figma launcher button hands control back to the deck.
+// Audience QR scans use the bare URL (no #next=) so they're never redirected.
 class BridgeController {
   constructor() {
     this._fired = false;
@@ -18,6 +21,24 @@ class BridgeController {
     });
     document.dispatchEvent(ev);
     window.dispatchEvent(ev);
+    this._maybeNavigateToNext();
+  }
+
+  // Returns the URL after `#next=` if present and looks like http(s); otherwise null.
+  _getReturnUrl() {
+    const hash = window.location.hash || '';
+    const prefix = '#next=';
+    if (!hash.startsWith(prefix)) return null;
+    const url = hash.slice(prefix.length);
+    if (!/^https?:\/\//i.test(url)) return null;
+    return url;
+  }
+
+  _maybeNavigateToNext() {
+    const next = this._getReturnUrl();
+    if (!next) return;
+    console.log('[Bridge] #next= present, navigating to', next);
+    window.location.replace(next);
   }
 
   // Call once at startup; callback is invoked when Space is pressed.

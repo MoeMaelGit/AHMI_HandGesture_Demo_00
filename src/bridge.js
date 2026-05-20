@@ -38,7 +38,13 @@ class BridgeController {
     const next = this._getReturnUrl();
     if (!next) return;
     console.log('[Bridge] #next= present, navigating to', next);
-    window.location.replace(next);
+    // Primary: same-tab navigation. Lands directly on the next slide if the
+    // URL is in present mode.
+    try { window.location.replace(next); } catch (_) { /* fall through to close */ }
+    // Fallback: if the navigation was blocked or never completed, close the demo
+    // tab so focus returns to the original Figma tab (still in present mode).
+    // If the navigation succeeded, the page is already gone before this fires.
+    setTimeout(() => { try { window.close(); } catch (_) {} }, 400);
   }
 
   // Call once at startup; callback is invoked when Space is pressed.

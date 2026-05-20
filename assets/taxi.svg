@@ -1,0 +1,183 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 340" role="img" aria-label="CacOOn Cocoon Pod autonomous taxi">
+  <defs>
+    <!-- Pearl-white body — cool top, slightly warmer bottom -->
+    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"  stop-color="#fdfefe"/>
+      <stop offset="55%" stop-color="#eef1f4"/>
+      <stop offset="100%" stop-color="#c9ced5"/>
+    </linearGradient>
+    <linearGradient id="bodySide" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"  stop-color="#f6f8fa"/>
+      <stop offset="100%" stop-color="#d9dde3"/>
+    </linearGradient>
+
+    <!-- Dark warm-tinted greenhouse glass — amber interior visible -->
+    <linearGradient id="glassGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"  stop-color="#0a0908" stop-opacity="0.96"/>
+      <stop offset="45%" stop-color="#231a12" stop-opacity="0.92"/>
+      <stop offset="80%" stop-color="#3a2a1a" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#1e1612" stop-opacity="0.92"/>
+    </linearGradient>
+
+    <!-- Warm interior glow visible through the tint -->
+    <radialGradient id="interiorAmber" cx="50%" cy="58%" r="55%">
+      <stop offset="0%"  stop-color="rgba(255, 200, 130, 0.55)"/>
+      <stop offset="55%" stop-color="rgba(255, 165, 80, 0.18)"/>
+      <stop offset="100%" stop-color="rgba(255, 165, 80, 0)"/>
+    </radialGradient>
+
+    <!-- Top-edge glass reflection -->
+    <linearGradient id="glassShine" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.55)"/>
+      <stop offset="40%" stop-color="rgba(255,255,255,0.10)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+
+    <!-- LED glow -->
+    <filter id="ledGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="3.2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softShadow" x="-20%" y="-50%" width="140%" height="200%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+
+  <!-- ─── Ground shadow ──────────────────────────────────────────────── -->
+  <ellipse cx="320" cy="322" rx="270" ry="11" fill="rgba(0,0,0,0.20)" filter="url(#softShadow)"/>
+  <ellipse cx="320" cy="318" rx="240" ry="5"  fill="rgba(0,0,0,0.32)"/>
+
+  <!-- ─── BODY — single rounded pod silhouette ──────────────────────── -->
+  <!-- Outer pod body: high arched roof, wraps over the wheels -->
+  <path d="
+    M 48 290
+    L 48 205
+    Q 48 130 118 86
+    Q 200 42 320 40
+    Q 440 42 522 86
+    Q 592 130 592 205
+    L 592 290
+    Q 592 296 586 296
+    L 54 296
+    Q 48 296 48 290 Z
+  " fill="url(#bodyGrad)" stroke="rgba(180, 188, 200, 0.5)" stroke-width="0.6"/>
+
+  <!-- Subtle organic leaf/branch pattern on the body sides (decoration) -->
+  <g opacity="0.18" stroke="#8a98aa" stroke-width="0.8" fill="none" stroke-linecap="round">
+    <path d="M 75 268 Q 95 248 120 256 Q 140 262 155 250"/>
+    <path d="M 110 282 Q 130 270 148 278"/>
+    <path d="M 485 250 Q 500 262 520 256 Q 545 248 565 268"/>
+    <path d="M 492 278 Q 510 270 530 282"/>
+  </g>
+
+  <!-- ─── GLASS GREENHOUSE — wraparound dark tint ───────────────────── -->
+  <!-- Main cabin glass shape (follows the body's upper arc) -->
+  <path d="
+    M 102 178
+    Q 102 122 152 102
+    Q 232 78 320 78
+    Q 408 78 488 102
+    Q 538 122 538 178
+    L 102 178 Z
+  " fill="url(#glassGrad)"/>
+
+  <!-- Interior amber glow seen through the glass -->
+  <path d="
+    M 102 178
+    Q 102 122 152 102
+    Q 232 78 320 78
+    Q 408 78 488 102
+    Q 538 122 538 178
+    L 102 178 Z
+  " fill="url(#interiorAmber)"/>
+
+  <!-- Suggested seat silhouettes inside (very faint, side-by-side rear-facing pair) -->
+  <g opacity="0.42" fill="rgba(58, 68, 86, 0.85)">
+    <rect x="220" y="128" width="42" height="50" rx="9"/>
+    <rect x="378" y="128" width="42" height="50" rx="9"/>
+  </g>
+
+  <!-- Pillar accents (very subtle vertical lines where doors meet body) -->
+  <line x1="155" y1="100" x2="155" y2="178" stroke="rgba(225, 230, 238, 0.18)" stroke-width="0.8"/>
+  <line x1="485" y1="100" x2="485" y2="178" stroke="rgba(225, 230, 238, 0.18)" stroke-width="0.8"/>
+
+  <!-- Door divider lines in the glass (very subtle) -->
+  <line x1="320" y1="78" x2="320" y2="178" stroke="rgba(225, 230, 238, 0.22)" stroke-width="0.9"/>
+
+  <!-- Glass top reflection — slim shine following the curve -->
+  <path d="
+    M 110 138
+    Q 130 108 175 100
+    Q 248 84 320 84
+    Q 392 84 465 100
+    Q 510 108 530 138
+  " fill="none" stroke="url(#glassShine)" stroke-width="1.5" opacity="0.85"/>
+
+  <!-- ─── LED LIGHT BAR — slim cyan strip along upper edge of glass ── -->
+  <path d="M 138 96 Q 320 70 502 96" fill="none" stroke="rgba(180, 220, 250, 0.85)" stroke-width="1.6" filter="url(#ledGlow)"/>
+  <path d="M 138 96 Q 320 70 502 96" fill="none" stroke="rgba(220, 240, 255, 0.95)" stroke-width="0.7"/>
+
+  <!-- ─── BODY UNDERSCORE LIGHT — subtle line below glass ─────────── -->
+  <line x1="102" y1="180" x2="538" y2="180" stroke="rgba(140, 160, 180, 0.35)" stroke-width="0.8"/>
+
+  <!-- ─── DOOR DETAILS (the actual sliding doors area) ──────────────── -->
+  <!-- These live UNDER the HTML door-panel divs and will be revealed
+       when the doors slide outward. They sit on the body. -->
+  <!-- Door indicator button (small blue dot, on the door surface) -->
+  <circle cx="290" cy="225" r="4" fill="#4fc3f7" filter="url(#ledGlow)"/>
+  <circle cx="290" cy="225" r="2.5" fill="#9fdfff"/>
+
+  <!-- Subtle door-handle recesses -->
+  <rect x="278" y="248" width="22" height="2.5" rx="1.2" fill="rgba(150, 160, 175, 0.40)"/>
+  <rect x="340" y="248" width="22" height="2.5" rx="1.2" fill="rgba(150, 160, 175, 0.40)"/>
+
+  <!-- ─── WHEEL ARCHES + WHEELS ─────────────────────────────────────── -->
+  <!-- Front wheel arch shadow -->
+  <ellipse cx="130" cy="292" rx="58" ry="14" fill="rgba(15, 18, 26, 0.55)"/>
+  <!-- Rear wheel arch shadow -->
+  <ellipse cx="510" cy="292" rx="58" ry="14" fill="rgba(15, 18, 26, 0.55)"/>
+
+  <!-- Front wheel (mostly tucked under the body) -->
+  <circle cx="130" cy="292" r="30" fill="#0a0c12"/>
+  <circle cx="130" cy="292" r="24" fill="#1b1f2a"/>
+  <circle cx="130" cy="292" r="15" fill="#262b38"/>
+  <circle cx="130" cy="292" r="4"  fill="#4fc3f7" filter="url(#ledGlow)"/>
+  <!-- Subtle hub strokes -->
+  <circle cx="130" cy="292" r="24" fill="none" stroke="rgba(60, 68, 82, 0.6)" stroke-width="0.6"/>
+
+  <!-- Rear wheel -->
+  <circle cx="510" cy="292" r="30" fill="#0a0c12"/>
+  <circle cx="510" cy="292" r="24" fill="#1b1f2a"/>
+  <circle cx="510" cy="292" r="15" fill="#262b38"/>
+  <circle cx="510" cy="292" r="4"  fill="#4fc3f7" filter="url(#ledGlow)"/>
+  <circle cx="510" cy="292" r="24" fill="none" stroke="rgba(60, 68, 82, 0.6)" stroke-width="0.6"/>
+
+  <!-- ─── FRONT LED ACCENT — small vertical strip at front edge ──── -->
+  <rect x="49" y="232" width="3.5" height="32" rx="1.6" fill="rgba(240, 250, 255, 0.85)" filter="url(#ledGlow)"/>
+  <rect x="49" y="232" width="3.5" height="32" rx="1.6" fill="rgba(255, 255, 255, 0.95)"/>
+
+  <!-- Rear tail light — red strip at rear edge -->
+  <rect x="587.5" y="232" width="3.5" height="32" rx="1.6" fill="rgba(255, 75, 55, 0.85)" filter="url(#ledGlow)"/>
+  <rect x="587.5" y="232" width="3.5" height="32" rx="1.6" fill="rgba(255, 110, 90, 0.95)"/>
+
+  <!-- ─── CacOOn BRAND BADGE — small mark above rear wheel arch ──── -->
+  <g transform="translate(490, 268)">
+    <!-- Tiny butterfly silhouette -->
+    <path d="M -7 -1 Q -11 -6 -7 -10 Q -3 -7 0 -2 Q 3 -7 7 -10 Q 11 -6 7 -1 Q 3 1 0 -2 Q -3 1 -7 -1 Z"
+          fill="rgba(80, 92, 108, 0.55)"/>
+    <text x="15" y="2" font-family="'Inter','Segoe UI',sans-serif" font-size="8.5" font-weight="700"
+          letter-spacing="2.4" fill="rgba(85, 95, 112, 0.7)">CACOON</text>
+  </g>
+
+  <!-- ─── Side QR/info chip (a tiny detail) ──────────────────────── -->
+  <g transform="translate(140, 270)" opacity="0.55">
+    <rect width="10" height="10" rx="1.4" fill="none" stroke="rgba(80, 92, 108, 0.55)" stroke-width="0.7"/>
+    <rect x="2" y="2" width="2" height="2" fill="rgba(80, 92, 108, 0.55)"/>
+    <rect x="6" y="2" width="2" height="2" fill="rgba(80, 92, 108, 0.55)"/>
+    <rect x="2" y="6" width="2" height="2" fill="rgba(80, 92, 108, 0.55)"/>
+    <rect x="6" y="6" width="2" height="2" fill="rgba(80, 92, 108, 0.55)"/>
+  </g>
+</svg>

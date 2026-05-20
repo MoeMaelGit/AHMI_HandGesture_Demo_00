@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CacOOn Cabin — Gesture Hailing</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #050810;
+      --panel-bg:    rgba(8, 16, 36, 0.58);
+      --panel-edge:  rgba(255, 255, 255, 0.06);
+      --border:      rgba(79, 195, 247, 0.24);
+      --text:        #f0f5ff;
+      --dim:         #7aadcc;
+      --accent:      #4fc3f7;
+      --accent-soft: rgba(79, 195, 247, 0.55);
+      --orange:      #ff7e00;
+      --orange-soft: rgba(255, 126, 0, 0.55);
+      --danger:      #ff4444;
+      --success:     #4fc3f7;
+      --ring-r:      45;
+      --ring-circum: 282.74;   /* 2π×45 */
+      --font-sans:   'Inter', 'Segoe UI', system-ui, sans-serif;
+      --font-mono:   'JetBrains Mono', 'Consolas', monospace;
+      --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-feature-settings: 'ss01', 'cv11';
+      letter-spacing: 0.1px;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .hidden { display: none !important; }
+
+    /* ── Camera canvas ────────────────────────────────────────────────────── */
+    #cam-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* ── UI overlay ───────────────────────────────────────────────────────── */
+    #ui-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Glass panel base — OLED HMI feel: heavy blur, faint inner highlight, glow ring */
+    .glass {
+      background: var(--panel-bg);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      backdrop-filter: blur(28px) saturate(140%);
+      -webkit-backdrop-filter: blur(28px) saturate(140%);
+      box-shadow:
+        inset 0 1px 0 var(--panel-edge),
+        inset 0 0 0 1px rgba(79, 195, 247, 0.03),
+        0 18px 48px rgba(0, 0, 0, 0.45),
+        0 0 0 1px rgba(79, 195, 247, 0.04);
+    }
+
+    /* ── State panels ─────────────────────────────────────────────────────── */
+    .state-panel {
+      position: absolute;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.42s var(--ease-out), transform 0.42s var(--ease-out);
+      pointer-events: none;
+    }
+    .state-panel.active {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    /* IDLE — bottom-center hint */
+    #panel-idle {
+      bottom: 48px;
+      left: 50%;
+      transform: translate(-50%, 10px);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      white-space: nowrap;
+    }
+    #panel-idle.active { transform: translate(-50%, 0); }
+    #panel-idle .hand-icon {
+      font-size: 26px;
+      animation: pulse-icon 2.4s ease-in-out infinite;
+    }
+    #panel-idle span {
+      font-size: 15px;
+      color: var(--dim);
+      letter-spacing: 0.4px;
+      font-weight: 400;
+    }
+    @keyframes pulse-icon {
+      0%, 100% { opacity: 0.5; transform: scale(1); }
+      50%       { opacity: 1;   transform: scale(1.1); }
+    }
+
+    /* DETECTING — center ring + label */
+    #panel-detecting {
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, calc(-50% + 8px));
+      padding: 42px 50px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      min-width: 250px;
+    }
+    #panel-detecting.active { transform: translate(-50%, -50%); }
+    #panel-detecting .label {
+      font-size: 12px;
+      color: var(--dim);
+      letter-spacing: 2.4px;
+      text-transform: uppercase;
+      font-weight: 500;
+      font-family: var(--font-mono);
+    }
+
+    /* PROMPTING — center card + top timer bar */
+    #panel-prompting {
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, calc(-50% + 8px));
+      padding: 40px 56px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      min-width: 340px;
+    }
+    #panel-prompting.active { transform: translate(-50%, -50%); }
+    #panel-prompting .thumb-icon {
+      font-size: 68px;
+      line-height: 1;
+      filter: drop-shadow(0 0 18px rgba(79,195,247,0.45));
+      animation: float-thumb 1.8s ease-in-out infinite;
+    }
+    @keyframes float-thumb {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-7px); }
+    }
+    #panel-prompting .prompt-title {
+      font-size: 23px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      color: var(--text);
+    }
+    #panel-prompting .prompt-sub {
+      font-size: 13px;
+      color: var(--dim);
+      letter-spacing: 0.3px;
+    }
+
+    /* Prompt timer bar (top of screen) */
+    #prompt-timer-wrap {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 4px;
+      z-index: 20;
+      background: rgba(79,195,247,0.10);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    #prompt-timer-wrap.active { opacity: 1; }
+    #prompt-bar-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--orange));
+      box-shadow: 0 0 12px rgba(79,195,247,0.55);
+      transform-origin: left center;
+      transform: scaleX(1);
+      transition: transform 0.1s linear;
+    }
+    #prompt-secs-badge {
+      position: fixed;
+      top: 14px; right: 18px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 1.4px;
+      color: var(--dim);
+      z-index: 20;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    #prompt-secs-badge.active { opacity: 1; }
+
+    /* CONFIRMING — center ring */
+    #panel-confirming {
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, calc(-50% + 8px));
+      padding: 42px 50px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      min-width: 250px;
+    }
+    #panel-confirming.active { transform: translate(-50%, -50%); }
+    #panel-confirming .label {
+      font-size: 12px;
+      color: var(--dim);
+      letter-spacing: 2.4px;
+      text-transform: uppercase;
+      font-weight: 500;
+      font-family: var(--font-mono);
+    }
+
+    /* CANCELLED */
+    #panel-cancelled {
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, calc(-50% + 8px));
+      padding: 30px 46px;
+      text-align: center;
+    }
+    #panel-cancelled.active { transform: translate(-50%, -50%); }
+    #panel-cancelled .cancel-text {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--danger);
+      letter-spacing: 0.2px;
+    }
+    #panel-cancelled .cancel-sub {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--dim);
+      letter-spacing: 0.3px;
+    }
+
+    /* ── Progress rings (SVG) ─────────────────────────────────────────────── */
+    .ring-svg {
+      width: 128px;
+      height: 128px;
+      transform: rotate(-90deg);
+    }
+    .ring-track {
+      fill: none;
+      stroke: rgba(255,255,255,0.06);
+      stroke-width: 8;
+    }
+    .ring-fill {
+      fill: none;
+      stroke-width: 8;
+      stroke-linecap: round;
+      stroke-dasharray: var(--ring-circum);
+      stroke-dashoffset: var(--ring-circum);
+      transition: stroke-dashoffset 0.08s linear;
+      filter: drop-shadow(0 0 10px currentColor);
+    }
+    .ring-orange { stroke: var(--orange); }
+    .ring-cyan   { stroke: var(--accent); }
+
+    /* Subtle breathing core inside ring — adds life when filling */
+    .ring-wrap::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--accent-soft) 0%, transparent 70%);
+      filter: blur(2px);
+      opacity: 0.45;
+      animation: ring-breathe 2.4s ease-in-out infinite;
+      pointer-events: none;
+    }
+    #panel-detecting .ring-wrap::after {
+      background: radial-gradient(circle, var(--orange-soft) 0%, transparent 70%);
+    }
+    @keyframes ring-breathe {
+      0%, 100% { opacity: 0.35; transform: scale(1); }
+      50%       { opacity: 0.7;  transform: scale(1.6); }
+    }
+
+    /* Percentage label inside ring (counter-rotated) */
+    .ring-center-label {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: var(--text);
+      pointer-events: none;
+      z-index: 1;
+    }
+    .ring-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── Taxi arrival overlay ─────────────────────────────────────────────── */
+    #taxi-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 28%, rgba(20, 55, 110, 0.45) 0%, transparent 65%),
+        radial-gradient(ellipse 60% 40% at 50% 100%, rgba(0, 0, 0, 0.85) 0%, transparent 70%),
+        linear-gradient(180deg, #02050d 0%, #060b1c 45%, #02040a 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 40px;
+      overflow: hidden;
+    }
+    /* Animated perspective road grid — implies approach toward the viewer */
+    #taxi-overlay::before {
+      content: '';
+      position: absolute;
+      bottom: 0; left: -40%; right: -40%;
+      height: 52%;
+      background-image:
+        linear-gradient(rgba(79,195,247,0.13) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79,195,247,0.08) 1px, transparent 1px);
+      background-size: 72px 36px;
+      transform: perspective(260px) rotateX(52deg);
+      transform-origin: bottom center;
+      animation: road-pull 2.4s linear infinite;
+      pointer-events: none;
+      mask-image: linear-gradient(180deg, transparent 0%, #000 28%, #000 78%, transparent 100%);
+      -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 28%, #000 78%, transparent 100%);
+    }
+    @keyframes road-pull {
+      from { background-position: 0 0; }
+      to   { background-position: 0 36px; }
+    }
+    /* Distance fog at the horizon — adds depth and softens the grid origin */
+    #taxi-overlay::after {
+      content: '';
+      position: absolute;
+      top: 32%; left: 0; right: 0;
+      height: 28%;
+      background: radial-gradient(ellipse 60% 100% at 50% 0%,
+        rgba(79, 195, 247, 0.10) 0%,
+        rgba(79, 195, 247, 0.04) 35%,
+        transparent 75%);
+      pointer-events: none;
+      filter: blur(8px);
+    }
+
+    /* Ambient orbs — slow-drifting depth, do not distract */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.5;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .orb-1 {
+      top: 8%; left: 6%;
+      width: 320px; height: 320px;
+      background: radial-gradient(circle, rgba(79,195,247,0.55) 0%, transparent 70%);
+      animation: orb-float 18s ease-in-out infinite;
+    }
+    .orb-2 {
+      top: 14%; right: 4%;
+      width: 280px; height: 280px;
+      background: radial-gradient(circle, rgba(120, 90, 220, 0.45) 0%, transparent 70%);
+      animation: orb-float 22s ease-in-out infinite -7s;
+    }
+    .orb-3 {
+      bottom: 18%; right: 22%;
+      width: 220px; height: 220px;
+      background: radial-gradient(circle, rgba(255, 126, 0, 0.22) 0%, transparent 70%);
+      animation: orb-float 26s ease-in-out infinite -13s;
+    }
+    @keyframes orb-float {
+      0%, 100% { transform: translate(0, 0); }
+      33%       { transform: translate(40px, -30px); }
+      66%       { transform: translate(-30px, 25px); }
+    }
+
+    #taxi-wrap {
+      width: min(560px, 90vw);
+      transform: translateX(115vw);
+      transition: transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+      filter: drop-shadow(0 8px 48px rgba(79,195,247,0.30));
+      position: relative;
+      z-index: 1;
+    }
+    #taxi-wrap.slide-in {
+      transform: translateX(0);
+    }
+    #taxi-wrap img {
+      width: 100%;
+      height: auto;
+    }
+
+    /* ── Door panels — Zoox-style sliding doors over the new pod SVG ────── */
+    /* Positions derived from SVG viewBox 640×340:
+       Door zone: x 160–480 (25%–75%), y 65–285 (19%–84%)
+       Center seam at x=320 (50%). Left door slides left, right slides right. */
+    .door-panel {
+      position: absolute;
+      top: 19%;
+      height: 65%;
+      /* Layered: dark warm-tint glass on top, pearl-white body on bottom —
+         mirrors the SVG cabin + lower-body stack */
+      background:
+        linear-gradient(180deg,
+          #0a0908 0%,
+          #231a12 30%,
+          #3a2a1a 45%,
+          rgba(58, 42, 26, 0.85) 49%,
+          #f6f8fa 51%,
+          #eef1f4 72%,
+          #d9dde3 100%);
+      pointer-events: none;
+      backface-visibility: hidden;
+      transform-style: preserve-3d;
+      overflow: hidden;
+    }
+    /* Slim cyan accent strip at the glass/body seam */
+    .door-panel::before {
+      content: '';
+      position: absolute;
+      left: 0; right: 0;
+      top: 49.5%;
+      height: 1.5px;
+      background: rgba(140, 160, 180, 0.55);
+      box-shadow: 0 0 4px rgba(79,195,247,0.30);
+    }
+    /* Door handle recess (low-profile, on lower body section) */
+    .door-panel::after {
+      content: '';
+      position: absolute;
+      top: 64%;
+      left: 22%; right: 22%;
+      height: 2.5px;
+      background: rgba(120, 130, 145, 0.45);
+      border-radius: 1.5px;
+    }
+
+    /* Left door — slides left, with a slight rotateY for depth */
+    #door-left {
+      left: 25%;
+      width: 25%;
+      border-right: 1px solid rgba(180, 188, 200, 0.45);
+      transform-origin: right center;
+      transform: translateX(0) rotateY(0deg);
+      transition: transform 0.95s cubic-bezier(0.4, 0, 0.2, 1) 0.20s;
+    }
+    #door-left.open  { transform: translateX(-92%) rotateY(-10deg); }
+
+    /* Right door — slides right, mirror motion */
+    #door-right {
+      left: 50%;
+      width: 25%;
+      border-left: 1px solid rgba(180, 188, 200, 0.45);
+      transform-origin: left center;
+      transform: translateX(0) rotateY(0deg);
+      transition: transform 0.95s cubic-bezier(0.4, 0, 0.2, 1) 0.45s;
+    }
+    #door-right.open { transform: translateX(92%) rotateY(10deg); }
+
+    /* Subtle blue door-status LED on the left door (visible while closed) */
+    #door-left .door-led {
+      position: absolute;
+      top: 38%;
+      right: 14%;
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    /* Interior cabin glow — warm amber light revealed when doors slide open */
+    #car-interior {
+      position: absolute;
+      left: 25%;
+      top: 19%;
+      width: 50%;
+      height: 65%;
+      background:
+        /* Top half — warmer overhead light */
+        linear-gradient(180deg,
+          rgba(255, 215, 130, 0.55) 0%,
+          rgba(255, 175, 80, 0.30) 45%,
+          rgba(60, 35, 18, 0.50) 49%,
+          rgba(80, 60, 40, 0.85) 51%,
+          rgba(40, 32, 25, 0.95) 100%),
+        /* Center spot light — focal warmth */
+        radial-gradient(ellipse at 50% 30%,
+          rgba(255, 220, 150, 0.85) 0%,
+          rgba(255, 170, 80, 0.45) 35%,
+          rgba(255, 130, 60, 0.10) 70%,
+          transparent 100%);
+      opacity: 0;
+      transition: opacity 0.75s ease 0.1s;
+      pointer-events: none;
+    }
+    #car-interior.lit { opacity: 1; }
+
+    /* Ground glow — 3-layer stack: cyan base, warm amber catch, specular highlight */
+    #ground-glow {
+      position: absolute;
+      bottom: -22px;
+      left: 4%;
+      right: 4%;
+      height: 44px;
+      pointer-events: none;
+      z-index: -1;
+    }
+    #ground-glow .glow-layer {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 1.0s ease;
+    }
+    #ground-glow .glow-base {
+      background: radial-gradient(ellipse at center, rgba(79,195,247,0.55) 0%, transparent 68%);
+      filter: blur(12px);
+    }
+    #ground-glow .glow-warm {
+      background: radial-gradient(ellipse at 50% 30%, rgba(255, 180, 90, 0.35) 0%, transparent 55%);
+      filter: blur(14px);
+      transition-delay: 0.4s;
+    }
+    #ground-glow .glow-spec {
+      background: radial-gradient(ellipse 40% 80% at 50% 40%, rgba(255,255,255,0.40) 0%, transparent 60%);
+      filter: blur(3px);
+      mix-blend-mode: screen;
+      transition-delay: 0.6s;
+    }
+    #ground-glow.active .glow-layer { opacity: 1; }
+
+    #taxi-msg {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      text-align: center;
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 0.65s ease, transform 0.65s var(--ease-out);
+      max-width: 560px;
+      position: relative;
+      z-index: 1;
+    }
+    #taxi-msg.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .msg-brand {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 7px;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 4px;
+      text-shadow: 0 0 14px rgba(255, 126, 0, 0.45);
+    }
+    .msg-main {
+      font-size: clamp(22px, 3.2vw, 32px);
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.2px;
+      line-height: 1.2;
+      text-shadow: 0 0 28px rgba(79, 195, 247, 0.28);
+    }
+    .msg-sub {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--accent);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-top: 6px;
+      opacity: 0.85;
+    }
+    /* ETA badge — small mono "0 min · arriving" chip below the message */
+    .msg-eta {
+      margin-top: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 16px;
+      border: 1px solid rgba(79, 195, 247, 0.28);
+      border-radius: 99px;
+      background: rgba(8, 18, 38, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 1.8px;
+      color: var(--dim);
+      text-transform: uppercase;
+    }
+    .msg-eta .eta-pulse {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: eta-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes eta-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* ── Warning overlays ────────────────────────────────────────────────── */
+    .warning-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(5,8,16,0.94);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      padding: 32px;
+      text-align: center;
+    }
+    .warning-overlay .warn-icon { font-size: 52px; }
+    .warning-overlay h2 { font-size: 22px; font-weight: 700; color: var(--orange); }
+    .warning-overlay p  { font-size: 15px; color: var(--dim); max-width: 420px; line-height: 1.6; }
+    .warning-overlay .space-hint {
+      margin-top: 20px;
+      padding: 12px 24px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+      color: var(--dim);
+    }
+
+    /* ── Status dot (top-left corner) — radar ping ───────────────────────── */
+    #status-dot {
+      position: fixed;
+      top: 18px; left: 20px;
+      z-index: 15;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--dim);
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+    }
+    #status-dot .dot {
+      position: relative;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+    #status-dot .dot::before,
+    #status-dot .dot::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1px solid var(--accent);
+      animation: radar-ping 1.8s ease-out infinite;
+    }
+    #status-dot .dot::after { animation-delay: 0.9s; }
+    @keyframes radar-ping {
+      0%   { transform: scale(1);   opacity: 0.6; }
+      80%  { transform: scale(3.5); opacity: 0;   }
+      100% { transform: scale(3.5); opacity: 0;   }
+    }
+
+    /* ── CacOOn brand badge (top-right corner) ────────────────────────────── */
+    #brand-badge {
+      position: fixed;
+      top: 16px; right: 18px;
+      z-index: 15;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+      opacity: 0.85;
+      transition: opacity 0.3s ease;
+    }
+    #brand-badge .brand-mark {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--orange);
+      box-shadow: 0 0 8px var(--orange-soft);
+    }
+    #brand-badge .brand-text {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    /* Hide brand badge while the prompt timer takes the same corner */
+    #prompt-secs-badge.active ~ #brand-badge { opacity: 0; }
+
+    /* ── Scan line animation on camera feed ───────────────────────────────── */
+    #scan-line {
+      position: fixed;
+      left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent 5%, rgba(79,195,247,0.35) 50%, transparent 95%);
+      filter: blur(1px);
+      z-index: 8;
+      animation: scan 6s linear infinite;
+      pointer-events: none;
+    }
+    @keyframes scan {
+      0%   { top: 0; opacity: 0; }
+      8%   { opacity: 1; }
+      92%  { opacity: 1; }
+      100% { top: 100vh; opacity: 0; }
+    }
+
+  </style>
+</head>
+<body>
+
+<!-- ── Camera feed ──────────────────────────────────────────────────────── -->
+<canvas id="cam-canvas"></canvas>
+<div id="scan-line"></div>
+
+<!-- ── Status dot ──────────────────────────────────────────────────────── -->
+<div id="status-dot">
+  <div class="dot"></div>
+  <span id="status-label">SCANNING</span>
+</div>
+
+<!-- ── Prompt timer bar ────────────────────────────────────────────────── -->
+<div id="prompt-timer-wrap"><div id="prompt-bar-fill"></div></div>
+<div id="prompt-secs-badge"><span id="prompt-secs">8s</span></div>
+
+<!-- ── CacOOn brand badge (top-right) — hidden during PROMPTING ────────── -->
+<div id="brand-badge">
+  <div class="brand-mark"></div>
+  <span class="brand-text">CacOOn</span>
+</div>
+
+<!-- ── State panels ─────────────────────────────────────────────────────── -->
+<div id="ui-overlay">
+
+  <!-- IDLE -->
+  <div id="panel-idle" class="state-panel glass">
+    <div class="hand-icon">✋</div>
+    <span>Raise your hand to hail a robotaxi</span>
+  </div>
+
+  <!-- DETECTING -->
+  <div id="panel-detecting" class="state-panel glass">
+    <div class="label">Hold still&hellip;</div>
+    <div class="ring-wrap">
+      <svg class="ring-svg" viewBox="0 0 100 100">
+        <circle class="ring-track" cx="50" cy="50" r="45"/>
+        <circle id="detect-ring-fill" class="ring-fill ring-orange" cx="50" cy="50" r="45"/>
+      </svg>
+      <div class="ring-center-label" id="detect-pct">0%</div>
+    </div>
+  </div>
+
+  <!-- PROMPTING -->
+  <div id="panel-prompting" class="state-panel glass">
+    <div class="thumb-icon">👍</div>
+    <div class="prompt-title">Show thumbs&#8209;up</div>
+    <div class="prompt-sub">Hold for 2 seconds to confirm your request</div>
+  </div>
+
+  <!-- CONFIRMING -->
+  <div id="panel-confirming" class="state-panel glass">
+    <div class="label">Confirming&hellip;</div>
+    <div class="ring-wrap">
+      <svg class="ring-svg" viewBox="0 0 100 100">
+        <circle class="ring-track" cx="50" cy="50" r="45"/>
+        <circle id="confirm-ring-fill" class="ring-fill ring-cyan" cx="50" cy="50" r="45"/>
+      </svg>
+      <div class="ring-center-label" id="confirm-pct">0%</div>
+    </div>
+  </div>
+
+  <!-- CANCELLED -->
+  <div id="panel-cancelled" class="state-panel glass">
+    <div class="cancel-text">Request cancelled.</div>
+    <div class="cancel-sub">Lower your hand and try again.</div>
+  </div>
+
+</div><!-- #ui-overlay -->
+
+<!-- ── Taxi arrival overlay ─────────────────────────────────────────────── -->
+<div id="taxi-overlay" class="hidden">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div id="taxi-wrap" style="position:relative">
+    <div id="ground-glow">
+      <div class="glow-layer glow-base"></div>
+      <div class="glow-layer glow-warm"></div>
+      <div class="glow-layer glow-spec"></div>
+    </div>
+    <img src="assets/taxi.svg" alt="CacOOn autonomous taxi arriving">
+    <div id="car-interior"></div>
+    <div class="door-panel" id="door-left"><span class="door-led"></span></div>
+    <div class="door-panel" id="door-right"></div>
+  </div>
+  <div id="taxi-msg">
+    <span class="msg-brand">CacOOn</span>
+    <span class="msg-main">Your taxi has arrived</span>
+    <span class="msg-sub">Boarding now &nbsp;·&nbsp; Follow the guide &nbsp;→</span>
+    <span class="msg-eta">
+      <span class="eta-pulse"></span>
+      <span id="eta-text">Arriving · 0 min</span>
+    </span>
+  </div>
+</div>
+
+<!-- ── Warning: camera denied ────────────────────────────────────────────── -->
+<div id="warn-camera" class="warning-overlay hidden">
+  <div class="warn-icon">📷</div>
+  <h2>Camera access required</h2>
+  <p>Click the camera icon in your browser's address bar and allow access, then reload this page.</p>
+  <div class="space-hint">Demo mode: press <strong>Space</strong> to trigger the animation manually.</div>
+</div>
+
+<!-- ── Warning: MediaPipe unavailable ───────────────────────────────────── -->
+<div id="warn-mediapipe" class="warning-overlay hidden">
+  <div class="warn-icon">⚠️</div>
+  <h2>Gesture detection unavailable</h2>
+  <p>MediaPipe could not be loaded. Check your internet connection and reload, or use demo mode.</p>
+  <div class="space-hint">Demo mode: press <strong>Space</strong> to trigger the animation manually.</div>
+</div>
+
+<!-- ── Hidden video element for MediaPipe ───────────────────────────────── -->
+<video id="input-video" playsinline autoplay muted style="display:none"></video>
+
+<!-- ── MediaPipe CDN ─────────────────────────────────────────────────────── -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
+
+<!-- ── App scripts (order matters) ─────────────────────────────────────── -->
+<script src="src/config.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/gesture.js"></script>
+<script src="src/ui.js"></script>
+<script src="src/animation.js"></script>
+<script src="src/bridge.js"></script>
+
+<!-- ── Init & wiring ─────────────────────────────────────────────────────── -->
+<script>
+(async () => {
+  const canvas    = document.getElementById('cam-canvas');
+  const video     = document.getElementById('input-video');
+  const statusLbl = document.getElementById('status-label');
+  const timerWrap = document.getElementById('prompt-timer-wrap');
+  const secsBadge = document.getElementById('prompt-secs-badge');
+
+  // Size canvas to viewport
+  function resizeCanvas() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  // ── Instantiate controllers ─────────────────────────────────────────────
+  const detector  = new GestureDetector();
+  const ui        = new UIController();
+  const animation = new TaxiAnimation(document.getElementById('taxi-overlay'));
+  const bridge    = new BridgeController();
+
+  // ── State label map ─────────────────────────────────────────────────────
+  const STATUS_LABELS = {
+    IDLE:       'SCANNING',
+    DETECTING:  'HAND DETECTED',
+    PROMPTING:  'AWAITING THUMBS-UP',
+    CONFIRMING: 'CONFIRMING',
+    CONFIRMED:  'CONFIRMED',
+    CANCELLED:  'CANCELLED',
+  };
+
+  // ── Gesture → UI wiring ────────────────────────────────────────────────
+  detector.addEventListener('statechange', ({ detail: { state, prev } }) => {
+    ui.setState(state);
+    statusLbl.textContent = STATUS_LABELS[state] || state;
+
+    // Show/hide prompt timer bar
+    const isPrompting = state === 'PROMPTING' || state === 'CONFIRMING';
+    timerWrap.classList.toggle('active', state === 'PROMPTING');
+    secsBadge.classList.toggle('active', state === 'PROMPTING');
+
+    if (state === 'CONFIRMED') {
+      animation.play(() => {
+        bridge.trigger();
+        // Reset after a moment so demo can repeat
+        setTimeout(() => {
+          animation.hide();
+          bridge.reset();
+          detector.resetToIdle();
+        }, 3000);
+      });
+    }
+  });
+
+  detector.addEventListener('progress', ({ detail: { value } }) => {
+    ui.setDetectProgress(value);
+    const pct = document.getElementById('detect-pct');
+    if (pct) pct.textContent = Math.round(value * 100) + '%';
+  });
+
+  detector.addEventListener('promptProgress', ({ detail: { value } }) => {
+    ui.setPromptProgress(value);
+  });
+
+  detector.addEventListener('confirmProgress', ({ detail: { value } }) => {
+    ui.setConfirmProgress(value);
+    const pct = document.getElementById('confirm-pct');
+    if (pct) pct.textContent = Math.round(value * 100) + '%';
+  });
+
+  detector.addEventListener('warning', ({ detail: { type } }) => {
+    ui.showWarning(type);
+  });
+
+  // ── Space bar fallback ──────────────────────────────────────────────────
+  bridge.setupSpaceFallback(() => {
+    animation.play(() => {
+      bridge.trigger();
+      setTimeout(() => {
+        animation.hide();
+        bridge.reset();
+      }, 3000);
+    });
+  });
+
+  // ── Audio unlock — first user gesture wakes the AudioContext so subsequent
+  // gesture-triggered chimes play. Browsers block autoplay until user interacts.
+  const unlockAudio = () => {
+    try { animation.audio.unlock(); } catch (_) {}
+    document.removeEventListener('keydown', unlockAudio);
+    document.removeEventListener('click', unlockAudio);
+    document.removeEventListener('pointerdown', unlockAudio);
+  };
+  document.addEventListener('keydown', unlockAudio, { once: false });
+  document.addEventListener('click', unlockAudio, { once: false });
+  document.addEventListener('pointerdown', unlockAudio, { once: false });
+
+  // ── Start detection ─────────────────────────────────────────────────────
+  const initOk = await detector.init(video, canvas);
+  if (initOk) {
+    const startOk = await detector.start();
+    if (!startOk) {
+      statusLbl.textContent = 'CAMERA ERROR';
+    }
+  } else {
+    statusLbl.textContent = 'DEMO MODE';
+  }
+})();
+</script>
+
+</body>
+</html>

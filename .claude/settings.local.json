@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude_ai_Figma__get_metadata",
+      "mcp__claude_ai_Figma__get_screenshot",
+      "Bash(powershell -Command \"Get-Content index.html | Measure-Object -Line\")",
+      "PowerShell($content = Get-Content \"c:\\\\Masters\\\\AHMI\\\\robotaxi-gesture-demo\\\\index.html\" -Raw; $open_div = [regex]::Matches\\($content, '<div'\\).Count; $close_div = [regex]::Matches\\($content, '</div'\\).Count; $open_style = [regex]::Matches\\($content, '<style'\\).Count; $close_style = [regex]::Matches\\($content, '</style'\\).Count; $open_script = [regex]::Matches\\($content, '<script'\\).Count; $close_script = [regex]::Matches\\($content, '</script'\\).Count; Write-Host \"div: $open_div open / $close_div close\"; Write-Host \"style: $open_style open / $close_style close\"; Write-Host \"script: $open_script open / $close_script close\")",
+      "PowerShell($svg = Get-Content \"c:\\\\Masters\\\\AHMI\\\\robotaxi-gesture-demo\\\\assets\\\\taxi.svg\" -Raw; $open_g = [regex]::Matches\\($svg, '<g'\\).Count; $close_g = [regex]::Matches\\($svg, '</g'\\).Count; Write-Host \"SVG <g>: $open_g open / $close_g close\"; $open_defs = [regex]::Matches\\($svg, '<defs'\\).Count; $close_defs = [regex]::Matches\\($svg, '</defs'\\).Count; Write-Host \"SVG <defs>: $open_defs open / $close_defs close\"; $open_svg = [regex]::Matches\\($svg, '<svg'\\).Count; $close_svg = [regex]::Matches\\($svg, '</svg'\\).Count; Write-Host \"SVG root: $open_svg open / $close_svg close\")",
+      "PowerShell(node --check \"c:\\\\Masters\\\\AHMI\\\\robotaxi-gesture-demo\\\\src\\\\audio.js\" 2>&1)",
+      "PowerShell(node --check \"c:\\\\Masters\\\\AHMI\\\\robotaxi-gesture-demo\\\\src\\\\animation.js\" 2>&1)",
+      "PowerShell(node --check \"c:\\\\Masters\\\\AHMI\\\\robotaxi-gesture-demo\\\\src\\\\bridge.js\" 2>&1)",
+      "PowerShell(node --check \"c:\\\\Masters\\\\AHMI\\\\robotaxi-gesture-demo\\\\src\\\\ui.js\" 2>&1)",
+      "PowerShell(node --check \"c:\\\\Masters\\\\AHMI\\\\robotaxi-gesture-demo\\\\src\\\\gesture.js\" 2>&1)",
+      "PowerShell(node --check \"c:\\\\Masters\\\\AHMI\\\\robotaxi-gesture-demo\\\\src\\\\config.js\" 2>&1)",
+      "Bash(chromium-cli --help)",
+      "Bash(node -e \"try { require\\('playwright'\\); console.log\\('playwright: yes'\\); } catch\\(e\\) { console.log\\('playwright: no'\\); } try { require\\('puppeteer'\\); console.log\\('puppeteer: yes'\\); } catch\\(e\\) { console.log\\('puppeteer: no'\\); }\")",
+      "Bash(python -m http.server 8765 --bind 127.0.0.1)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{size_download}B\\\\n\" http://127.0.0.1:8765/index.html)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{size_download}B\\\\n\" http://127.0.0.1:8765/assets/taxi.svg)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{size_download}B\\\\n\" http://127.0.0.1:8765/src/audio.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{size_download}B\\\\n\" http://127.0.0.1:8765/src/animation.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{size_download}B\\\\n\" http://127.0.0.1:8765/src/gesture.js)",
+      "PowerShell(Start-Process \"http://127.0.0.1:8765/index.html\")",
+      "Bash(cd /tmp)",
+      "Bash(curl -s -o slide_13_5002.png \"https://www.figma.com/api/mcp/asset/947d6236-fd6a-4331-8ba8-cda4497b6b68\")",
+      "PowerShell($dst = Join-Path $env:TEMP \"figma_slide_13_5002.png\"; Invoke-WebRequest -Uri \"https://www.figma.com/api/mcp/asset/947d6236-fd6a-4331-8ba8-cda4497b6b68\" -OutFile $dst; Write-Host $dst; \\(Get-Item $dst\\).Length)"
+    ]
+  }
+}

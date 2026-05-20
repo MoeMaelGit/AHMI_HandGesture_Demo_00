@@ -22,6 +22,20 @@ Open in Chrome or Edge, allow camera access when prompted.
 - Press **F11** for fullscreen on demo day.
 - Press **Space** as a manual fallback if gesture detection misses.
 
+## For presenters
+
+The demo can hand control back to a Figma deck automatically. Configure the launcher button in your Figma slide with a URL of the form:
+
+```
+https://moemaelgit.github.io/AHMI_HandGesture_Demo_00/#next=<raw-url-of-the-next-figma-slide>
+```
+
+After the taxi animation completes, the tab calls `window.location.replace(...)` and navigates to that slide. If the navigation is blocked for any reason, a `window.close()` fallback runs ~400 ms later so focus returns to your original Figma tab. Capture the next-slide URL from inside Figma's Present mode, not the editor — the URL params differ.
+
+## For audiences
+
+`assets/qr-audience.png` is a static QR pointing at the bare deployed URL — **no `#next=`**. Drop it into a slide so the rest of the class can try the demo on their phones; their scans will never redirect anyone into the presenter's Figma deck. After their gesture, the demo just resets so they can try again.
+
 ## Tech stack
 
 - **MediaPipe Hands** (CDN) — hand landmark detection.
@@ -46,17 +60,23 @@ Then open `http://127.0.0.1:8765/` in Chrome or Edge. `127.0.0.1` (not `localhos
 
 ```
 .
-├── index.html        # entire runnable demo (markup + styles + bootstrap)
+├── index.html         # entire runnable demo (markup + styles + bootstrap)
+├── README.md          # this file
+├── summary.md         # self-contained project overview — read first
+├── improvements.md    # backlog: edge cases + auto-tuning-agent idea + polish
 ├── src/
-│   ├── config.js     # tunable thresholds
-│   ├── audio.js      # Web Audio synthesis
-│   ├── gesture.js    # MediaPipe + state machine
-│   ├── ui.js         # overlay panels, rings, timers
-│   ├── animation.js  # taxi arrival sequence
-│   └── bridge.js     # keyboard fallback
+│   ├── config.js      # tunable thresholds
+│   ├── audio.js       # Web Audio synthesis
+│   ├── gesture.js     # MediaPipe + state machine + classifiers
+│   ├── ui.js          # overlay panels, rings, timers, warning surfaces
+│   ├── animation.js   # taxi arrival sequence
+│   └── bridge.js      # ArrowRight dispatch + #next= hash redirect + Space fallback
 └── assets/
-    └── taxi.svg      # Zoox-style pearl pod
+    ├── taxi.svg          # Zoox-style pearl pod
+    └── qr-audience.png   # QR code → bare demo URL (no #next=), drop into presentation slides
 ```
+
+`CLAUDE.md`, `DEPLOY.md`, and the `docs/` folder are gitignored — they live locally as Claude/contributor reference but don't ship to GitHub. See [summary.md](summary.md) for the full handoff overview.
 
 ## Credits
 

@@ -62,8 +62,6 @@ Then open `http://127.0.0.1:8765/` in Chrome or Edge. `127.0.0.1` (not `localhos
 .
 ├── index.html         # entire runnable demo (markup + styles + bootstrap)
 ├── README.md          # this file
-├── summary.md         # self-contained project overview — read first
-├── improvements.md    # backlog: edge cases + auto-tuning-agent idea + polish
 ├── src/
 │   ├── config.js      # tunable thresholds
 │   ├── audio.js       # Web Audio synthesis
@@ -75,8 +73,6 @@ Then open `http://127.0.0.1:8765/` in Chrome or Edge. `127.0.0.1` (not `localhos
     ├── taxi.svg          # Zoox-style pearl pod
     └── qr-audience.png   # QR code → bare demo URL (no #next=), drop into presentation slides
 ```
-
-`CLAUDE.md`, `DEPLOY.md`, and the `docs/` folder are gitignored — they live locally as Claude/contributor reference but don't ship to GitHub. See [summary.md](summary.md) for the full handoff overview.
 
 ## Credits
 

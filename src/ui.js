@@ -1,61 +1,95 @@
-// UIController — manages all HMI overlay panels, countdown rings, and warning screens.
-// Receives state/progress data from GestureDetector events and updates the DOM.
+// UIController — per-hand AR overlays anchored to wrist coordinates, plus the
+// pickup-card that shows the cropped winner alongside the taxi-arrival animation.
+//
+// Wrist coordinates from the detector are in the unmirrored source-video frame
+// (normalized 0..1). The camera canvas is drawn mirrored (selfie view), so we
+// flip X here: screenX = (1 - wrist.x) * window.innerWidth.
 
 class UIController {
   constructor() {
-    // State panels
     this._panels = {
-      IDLE:       document.getElementById('panel-idle'),
-      DETECTING:  document.getElementById('panel-detecting'),
-      PROMPTING:  document.getElementById('panel-prompting'),
-      CONFIRMING: document.getElementById('panel-confirming'),
-      CANCELLED:  document.getElementById('panel-cancelled'),
+      IDLE:      document.getElementById('panel-idle'),
+      CANCELLED: document.getElementById('panel-cancelled'),
     };
 
-    // Progress elements
-    this._detectRing   = document.getElementById('detect-ring-fill');
-    this._confirmRing  = document.getElementById('confirm-ring-fill');
-    this._promptBar    = document.getElementById('prompt-bar-fill');
-    this._promptSecs   = document.getElementById('prompt-secs');
+    this._overlayRoot   = document.getElementById('hand-overlays');
+    this._template      = document.getElementById('hand-overlay-template');
+    this._pickupCard    = document.getElementById('pickup-card');
+    this._pickupCanvas  = document.getElementById('pickup-snapshot');
+    this._pickupId      = document.getElementById('pickup-id');
 
-    this._RING_CIRCUM = 2 * Math.PI * 45;  // r=45 → ~283
+    this._overlays = new Map();   // id → { root, ringFill, pct, idTag }
+    this._RING_CIRCUM = 2 * Math.PI * 45;
 
-    this._current = 'IDLE';
-    this._showPanel('IDLE');
+    if (this._panels.IDLE) this._panels.IDLE.classList.add('active');
   }
 
-  // Called on every statechange event from GestureDetector.
-  setState(newState) {
-    this._current = newState;
-    this._showPanel(newState);
+  // Toggle the IDLE "raise your hand" hint based on how many hands are tracked.
+  setTrackCount(count) {
+    if (this._panels.IDLE) this._panels.IDLE.classList.toggle('active', count === 0);
   }
 
-  // Called on 'progress' events (DETECTING — 0→1 as ring fills).
-  setDetectProgress(value) {
-    if (!this._detectRing) return;
-    this._detectRing.style.strokeDashoffset = this._RING_CIRCUM * (1 - value);
-  }
+  // Create / update / remove a single hand overlay based on its current state.
+  upsertHand(id, state, value, wrist) {
+    const isActive = state === 'DETECTING' || state === 'PROMPTING' || state === 'CONFIRMING';
+    if (!isActive) {
+      this.removeHand(id);
+      return;
+    }
 
-  // Called on 'promptProgress' events (PROMPTING — 0→1 as bar depletes).
-  setPromptProgress(value) {
-    if (!this._promptBar) return;
-    this._promptBar.style.transform = `scaleX(${1 - value})`;
-    if (this._promptSecs) {
-      const remaining = Math.ceil(CONFIG.confirmationTimeoutMs * (1 - value) / 1000);
-      this._promptSecs.textContent = `${remaining}s`;
+    let entry = this._overlays.get(id);
+    if (!entry) {
+      entry = this._createOverlay(id);
+      this._overlays.set(id, entry);
+    }
+
+    if (wrist) this._positionOverlay(entry, wrist);
+
+    entry.root.classList.remove('is-detecting', 'is-prompting', 'is-confirming');
+    entry.root.classList.add(`is-${state.toLowerCase()}`);
+
+    // PROMPTING progress is 0→1 as the window depletes — render as a shrinking ring.
+    const ringVal = state === 'PROMPTING' ? 1 - value : value;
+    if (entry.ringFill) {
+      entry.ringFill.style.strokeDashoffset = this._RING_CIRCUM * (1 - ringVal);
+    }
+    if (entry.pct) {
+      entry.pct.textContent = `${Math.round(ringVal * 100)}%`;
     }
   }
 
-  // Called on 'confirmProgress' events (CONFIRMING — 0→1 as ring fills).
-  setConfirmProgress(value) {
-    if (!this._confirmRing) return;
-    this._confirmRing.style.strokeDashoffset = this._RING_CIRCUM * (1 - value);
+  removeHand(id) {
+    const entry = this._overlays.get(id);
+    if (!entry) return;
+    this._overlays.delete(id);
+    entry.root.classList.add('fade-out');
+    setTimeout(() => entry.root.remove(), 260);
+  }
+
+  clearHands() {
+    for (const id of [...this._overlays.keys()]) this.removeHand(id);
+  }
+
+  // Show the pickup card with the cropped snapshot of the winning user.
+  showPickup(idHex, snapshotCanvas) {
+    if (!this._pickupCard) return;
+    if (snapshotCanvas && this._pickupCanvas) {
+      const ctx = this._pickupCanvas.getContext('2d');
+      ctx.clearRect(0, 0, this._pickupCanvas.width, this._pickupCanvas.height);
+      ctx.drawImage(snapshotCanvas, 0, 0, this._pickupCanvas.width, this._pickupCanvas.height);
+    }
+    if (this._pickupId) this._pickupId.textContent = `ID ${idHex}`;
+    this._pickupCard.classList.add('visible');
+  }
+
+  hidePickup() {
+    if (this._pickupCard) this._pickupCard.classList.remove('visible');
   }
 
   showWarning(type) {
     const warnMap = {
-      camera_denied:       'warn-camera',
-      camera_error:        'warn-camera',
+      camera_denied:         'warn-camera',
+      camera_error:          'warn-camera',
       mediapipe_unavailable: 'warn-mediapipe',
     };
     const id = warnMap[type];
@@ -66,21 +100,24 @@ class UIController {
 
   // ─── Internal ─────────────────────────────────────────────────────────────────
 
-  _showPanel(state) {
-    Object.values(this._panels).forEach(p => p && p.classList.remove('active'));
-    const target = this._panels[state];
-    if (target) {
-      target.classList.add('active');
-      // Reset ring on entry
-      if (state === 'DETECTING' && this._detectRing) {
-        this._detectRing.style.strokeDashoffset = this._RING_CIRCUM;
-      }
-      if (state === 'CONFIRMING' && this._confirmRing) {
-        this._confirmRing.style.strokeDashoffset = this._RING_CIRCUM;
-      }
-      if (state === 'PROMPTING' && this._promptBar) {
-        this._promptBar.style.transform = 'scaleX(1)';
-      }
-    }
+  _createOverlay(id) {
+    const node = this._template.content.firstElementChild.cloneNode(true);
+    this._overlayRoot.appendChild(node);
+    const idHex = id.toString(16).padStart(4, '0').toUpperCase();
+    const idTag = node.querySelector('.hand-id-tag');
+    if (idTag) idTag.textContent = `ID ${idHex}`;
+    return {
+      root:     node,
+      ringFill: node.querySelector('.hand-ring-fill'),
+      pct:      node.querySelector('.hand-pct'),
+      idTag,
+    };
+  }
+
+  _positionOverlay(entry, wrist) {
+    const x = (1 - wrist.x) * window.innerWidth;
+    const y = wrist.y * window.innerHeight;
+    entry.root.style.left = `${x}px`;
+    entry.root.style.top  = `${y}px`;
   }
 }

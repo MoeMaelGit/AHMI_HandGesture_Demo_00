@@ -75,7 +75,7 @@
         0 0 0 1px rgba(79, 195, 247, 0.04);
     }
 
-    /* ── State panels ─────────────────────────────────────────────────────── */
+    /* ── State panels (global hints — IDLE / CANCELLED) ──────────────────── */
     .state-panel {
       position: absolute;
       opacity: 0;
@@ -116,122 +116,7 @@
       50%       { opacity: 1;   transform: scale(1.1); }
     }
 
-    /* DETECTING — center ring + label */
-    #panel-detecting {
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, calc(-50% + 8px));
-      padding: 42px 50px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 20px;
-      min-width: 250px;
-    }
-    #panel-detecting.active { transform: translate(-50%, -50%); }
-    #panel-detecting .label {
-      font-size: 12px;
-      color: var(--dim);
-      letter-spacing: 2.4px;
-      text-transform: uppercase;
-      font-weight: 500;
-      font-family: var(--font-mono);
-    }
-
-    /* PROMPTING — center card + top timer bar */
-    #panel-prompting {
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, calc(-50% + 8px));
-      padding: 40px 56px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-      min-width: 340px;
-    }
-    #panel-prompting.active { transform: translate(-50%, -50%); }
-    #panel-prompting .thumb-icon {
-      font-size: 68px;
-      line-height: 1;
-      filter: drop-shadow(0 0 18px rgba(79,195,247,0.45));
-      animation: float-thumb 1.8s ease-in-out infinite;
-    }
-    @keyframes float-thumb {
-      0%, 100% { transform: translateY(0); }
-      50%       { transform: translateY(-7px); }
-    }
-    #panel-prompting .prompt-title {
-      font-size: 23px;
-      font-weight: 600;
-      letter-spacing: 0.2px;
-      color: var(--text);
-    }
-    #panel-prompting .prompt-sub {
-      font-size: 13px;
-      color: var(--dim);
-      letter-spacing: 0.3px;
-    }
-
-    /* Prompt timer bar (top of screen) */
-    #prompt-timer-wrap {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      height: 4px;
-      z-index: 20;
-      background: rgba(79,195,247,0.10);
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.25s;
-    }
-    #prompt-timer-wrap.active { opacity: 1; }
-    #prompt-bar-fill {
-      height: 100%;
-      width: 100%;
-      background: linear-gradient(90deg, var(--accent), var(--orange));
-      box-shadow: 0 0 12px rgba(79,195,247,0.55);
-      transform-origin: left center;
-      transform: scaleX(1);
-      transition: transform 0.1s linear;
-    }
-    #prompt-secs-badge {
-      position: fixed;
-      top: 14px; right: 18px;
-      font-family: var(--font-mono);
-      font-size: 12px;
-      font-weight: 500;
-      letter-spacing: 1.4px;
-      color: var(--dim);
-      z-index: 20;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.25s;
-    }
-    #prompt-secs-badge.active { opacity: 1; }
-
-    /* CONFIRMING — center ring */
-    #panel-confirming {
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, calc(-50% + 8px));
-      padding: 42px 50px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 20px;
-      min-width: 250px;
-    }
-    #panel-confirming.active { transform: translate(-50%, -50%); }
-    #panel-confirming .label {
-      font-size: 12px;
-      color: var(--dim);
-      letter-spacing: 2.4px;
-      text-transform: uppercase;
-      font-weight: 500;
-      font-family: var(--font-mono);
-    }
-
-    /* CANCELLED */
+    /* CANCELLED — kept available for future global-cancel flows */
     #panel-cancelled {
       top: 50%;
       left: 50%;
@@ -253,68 +138,129 @@
       letter-spacing: 0.3px;
     }
 
-    /* ── Progress rings (SVG) ─────────────────────────────────────────────── */
-    .ring-svg {
+    /* ── Per-hand AR overlays (anchored at wrist) ────────────────────────── */
+    #hand-overlays {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 12;
+    }
+    .hand-overlay {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      width: 128px;
+      height: 158px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      opacity: 0;
+      animation: hand-overlay-in 0.30s var(--ease-out) forwards;
+      pointer-events: none;
+      will-change: left, top, opacity;
+    }
+    @keyframes hand-overlay-in {
+      from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+      to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    }
+    .hand-overlay.fade-out {
+      animation: hand-overlay-out 0.26s var(--ease-out) forwards;
+    }
+    @keyframes hand-overlay-out {
+      to { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+    }
+    .hand-overlay .hand-ring {
       width: 128px;
       height: 128px;
       transform: rotate(-90deg);
+      filter: drop-shadow(0 0 8px rgba(79,195,247,0.35));
     }
-    .ring-track {
+    .hand-overlay .hand-ring-track {
       fill: none;
-      stroke: rgba(255,255,255,0.06);
-      stroke-width: 8;
+      stroke: rgba(255,255,255,0.07);
+      stroke-width: 6;
     }
-    .ring-fill {
+    .hand-overlay .hand-ring-fill {
       fill: none;
-      stroke-width: 8;
+      stroke: var(--accent);
+      stroke-width: 6;
       stroke-linecap: round;
       stroke-dasharray: var(--ring-circum);
       stroke-dashoffset: var(--ring-circum);
-      transition: stroke-dashoffset 0.08s linear;
-      filter: drop-shadow(0 0 10px currentColor);
+      transition: stroke-dashoffset 0.08s linear, stroke 0.2s ease;
+      filter: drop-shadow(0 0 6px currentColor);
     }
-    .ring-orange { stroke: var(--orange); }
-    .ring-cyan   { stroke: var(--accent); }
+    .hand-overlay.is-detecting  .hand-ring-fill { stroke: var(--orange); }
+    .hand-overlay.is-prompting  .hand-ring-fill { stroke: var(--orange); }
+    .hand-overlay.is-confirming .hand-ring-fill { stroke: var(--accent); }
 
-    /* Subtle breathing core inside ring — adds life when filling */
-    .ring-wrap::after {
-      content: '';
+    .hand-overlay .hand-center {
       position: absolute;
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      background: radial-gradient(circle, var(--accent-soft) 0%, transparent 70%);
-      filter: blur(2px);
-      opacity: 0.45;
-      animation: ring-breathe 2.4s ease-in-out infinite;
+      top: 64px;
+      left: 50%;
+      transform: translate(-50%, -50%);
       pointer-events: none;
     }
-    #panel-detecting .ring-wrap::after {
-      background: radial-gradient(circle, var(--orange-soft) 0%, transparent 70%);
-    }
-    @keyframes ring-breathe {
-      0%, 100% { opacity: 0.35; transform: scale(1); }
-      50%       { opacity: 0.7;  transform: scale(1.6); }
-    }
-
-    /* Percentage label inside ring (counter-rotated) */
-    .ring-center-label {
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
+    .hand-overlay .hand-pct {
       font-family: var(--font-mono);
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 600;
       letter-spacing: 0.5px;
       color: var(--text);
-      pointer-events: none;
-      z-index: 1;
     }
-    .ring-wrap {
-      position: relative;
-      display: inline-flex;
+    .hand-overlay .hand-thumb {
+      font-size: 36px;
+      line-height: 1;
+      filter: drop-shadow(0 0 8px rgba(255,126,0,0.55));
+      animation: hand-thumb-float 1.6s ease-in-out infinite;
+    }
+    @keyframes hand-thumb-float {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      50%       { transform: translate(-50%, -54%) scale(1.05); }
+    }
+    /* Show appropriate centerpiece per state */
+    .hand-overlay .hand-pct,
+    .hand-overlay .hand-thumb { display: none; }
+    .hand-overlay.is-detecting  .hand-pct   { display: block; }
+    .hand-overlay.is-confirming .hand-pct   { display: block; }
+    .hand-overlay.is-prompting  .hand-thumb { display: block; }
+
+    .hand-overlay .hand-label {
+      margin-top: 4px;
+      display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
+      gap: 2px;
     }
+    .hand-overlay .hand-id-tag {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 1.4px;
+      color: var(--dim);
+      opacity: 0.75;
+    }
+    .hand-overlay .hand-prompt-text {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: var(--text);
+      padding: 3px 9px;
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      background: rgba(8, 18, 38, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: none;
+    }
+    .hand-overlay.is-prompting .hand-prompt-text  { display: inline-block; color: var(--orange); border-color: rgba(255,126,0,0.4); }
+    .hand-overlay.is-detecting .hand-prompt-text  { display: inline-block; }
+    .hand-overlay.is-detecting .hand-prompt-text::before  { content: 'HOLD STILL'; }
+    .hand-overlay.is-prompting .hand-prompt-text::before  { content: 'THUMBS UP'; }
+    .hand-overlay.is-confirming .hand-prompt-text { display: inline-block; color: var(--accent); }
+    .hand-overlay.is-confirming .hand-prompt-text::before { content: 'CONFIRMING'; }
 
     /* ── Taxi arrival overlay ─────────────────────────────────────────────── */
     #taxi-overlay {
@@ -417,15 +363,10 @@
     }
 
     /* ── Door panels — Zoox-style sliding doors over the new pod SVG ────── */
-    /* Positions derived from SVG viewBox 640×340:
-       Door zone: x 160–480 (25%–75%), y 65–285 (19%–84%)
-       Center seam at x=320 (50%). Left door slides left, right slides right. */
     .door-panel {
       position: absolute;
       top: 19%;
       height: 65%;
-      /* Layered: dark warm-tint glass on top, pearl-white body on bottom —
-         mirrors the SVG cabin + lower-body stack */
       background:
         linear-gradient(180deg,
           #0a0908 0%,
@@ -440,7 +381,6 @@
       transform-style: preserve-3d;
       overflow: hidden;
     }
-    /* Slim cyan accent strip at the glass/body seam */
     .door-panel::before {
       content: '';
       position: absolute;
@@ -450,7 +390,6 @@
       background: rgba(140, 160, 180, 0.55);
       box-shadow: 0 0 4px rgba(79,195,247,0.30);
     }
-    /* Door handle recess (low-profile, on lower body section) */
     .door-panel::after {
       content: '';
       position: absolute;
@@ -461,7 +400,6 @@
       border-radius: 1.5px;
     }
 
-    /* Left door — slides left, with a slight rotateY for depth */
     #door-left {
       left: 25%;
       width: 25%;
@@ -472,7 +410,6 @@
     }
     #door-left.open  { transform: translateX(-92%) rotateY(-10deg); }
 
-    /* Right door — slides right, mirror motion */
     #door-right {
       left: 50%;
       width: 25%;
@@ -483,7 +420,6 @@
     }
     #door-right.open { transform: translateX(92%) rotateY(10deg); }
 
-    /* Subtle blue door-status LED on the left door (visible while closed) */
     #door-left .door-led {
       position: absolute;
       top: 38%;
@@ -502,14 +438,12 @@
       width: 50%;
       height: 65%;
       background:
-        /* Top half — warmer overhead light */
         linear-gradient(180deg,
           rgba(255, 215, 130, 0.55) 0%,
           rgba(255, 175, 80, 0.30) 45%,
           rgba(60, 35, 18, 0.50) 49%,
           rgba(80, 60, 40, 0.85) 51%,
           rgba(40, 32, 25, 0.95) 100%),
-        /* Center spot light — focal warmth */
         radial-gradient(ellipse at 50% 30%,
           rgba(255, 220, 150, 0.85) 0%,
           rgba(255, 170, 80, 0.45) 35%,
@@ -598,7 +532,7 @@
       margin-top: 6px;
       opacity: 0.85;
     }
-    /* ETA badge — small mono "0 min · arriving" chip below the message */
+    /* ETA badge */
     .msg-eta {
       margin-top: 14px;
       display: inline-flex;
@@ -627,6 +561,62 @@
     @keyframes eta-pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
       50%       { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* ── Pickup card (top-left of taxi overlay — shows the winning user) ──── */
+    #pickup-card {
+      position: absolute;
+      top: 26px;
+      left: 26px;
+      padding: 14px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      opacity: 0;
+      transform: translate(-12px, 0);
+      transition: opacity 0.6s ease 0.2s, transform 0.6s var(--ease-out) 0.2s;
+      z-index: 2;
+      max-width: 380px;
+    }
+    #pickup-card.visible {
+      opacity: 1;
+      transform: translate(0, 0);
+    }
+    #pickup-card #pickup-snapshot {
+      width: 160px;
+      height: 160px;
+      border-radius: 14px;
+      border: 1px solid rgba(79, 195, 247, 0.40);
+      box-shadow: 0 0 22px rgba(79, 195, 247, 0.30);
+      background: #050810;
+    }
+    #pickup-card .pickup-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #pickup-card .pickup-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--orange);
+    }
+    #pickup-card .pickup-id {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 1.6px;
+      color: var(--text);
+    }
+    #pickup-card .pickup-sub {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 1.6px;
+      color: var(--dim);
+      text-transform: uppercase;
+      margin-top: 2px;
     }
 
     /* ── Warning overlays ────────────────────────────────────────────────── */
@@ -718,8 +708,6 @@
       text-transform: uppercase;
       color: var(--text);
     }
-    /* Hide brand badge while the prompt timer takes the same corner */
-    #prompt-secs-badge.active ~ #brand-badge { opacity: 0; }
 
     /* ── Scan line animation on camera feed ───────────────────────────────── */
     #scan-line {
@@ -753,57 +741,22 @@
   <span id="status-label">SCANNING</span>
 </div>
 
-<!-- ── Prompt timer bar ────────────────────────────────────────────────── -->
-<div id="prompt-timer-wrap"><div id="prompt-bar-fill"></div></div>
-<div id="prompt-secs-badge"><span id="prompt-secs">8s</span></div>
-
-<!-- ── CacOOn brand badge (top-right) — hidden during PROMPTING ────────── -->
+<!-- ── CacOOn brand badge (top-right) ──────────────────────────────────── -->
 <div id="brand-badge">
   <div class="brand-mark"></div>
   <span class="brand-text">CacOOn</span>
 </div>
 
-<!-- ── State panels ─────────────────────────────────────────────────────── -->
+<!-- ── State panels (global hints) ──────────────────────────────────────── -->
 <div id="ui-overlay">
 
-  <!-- IDLE -->
+  <!-- IDLE — shown when zero hands are tracked -->
   <div id="panel-idle" class="state-panel glass">
     <div class="hand-icon">✋</div>
     <span>Raise your hand to hail a robotaxi</span>
   </div>
 
-  <!-- DETECTING -->
-  <div id="panel-detecting" class="state-panel glass">
-    <div class="label">Hold still&hellip;</div>
-    <div class="ring-wrap">
-      <svg class="ring-svg" viewBox="0 0 100 100">
-        <circle class="ring-track" cx="50" cy="50" r="45"/>
-        <circle id="detect-ring-fill" class="ring-fill ring-orange" cx="50" cy="50" r="45"/>
-      </svg>
-      <div class="ring-center-label" id="detect-pct">0%</div>
-    </div>
-  </div>
-
-  <!-- PROMPTING -->
-  <div id="panel-prompting" class="state-panel glass">
-    <div class="thumb-icon">👍</div>
-    <div class="prompt-title">Show thumbs&#8209;up</div>
-    <div class="prompt-sub">Hold for 2 seconds to confirm your request</div>
-  </div>
-
-  <!-- CONFIRMING -->
-  <div id="panel-confirming" class="state-panel glass">
-    <div class="label">Confirming&hellip;</div>
-    <div class="ring-wrap">
-      <svg class="ring-svg" viewBox="0 0 100 100">
-        <circle class="ring-track" cx="50" cy="50" r="45"/>
-        <circle id="confirm-ring-fill" class="ring-fill ring-cyan" cx="50" cy="50" r="45"/>
-      </svg>
-      <div class="ring-center-label" id="confirm-pct">0%</div>
-    </div>
-  </div>
-
-  <!-- CANCELLED -->
+  <!-- CANCELLED — kept available for future global-cancel flows -->
   <div id="panel-cancelled" class="state-panel glass">
     <div class="cancel-text">Request cancelled.</div>
     <div class="cancel-sub">Lower your hand and try again.</div>
@@ -811,11 +764,41 @@
 
 </div><!-- #ui-overlay -->
 
+<!-- ── Per-hand AR overlay layer ────────────────────────────────────────── -->
+<div id="hand-overlays"></div>
+
+<!-- Template cloned per hand by UIController -->
+<template id="hand-overlay-template">
+  <div class="hand-overlay">
+    <svg class="hand-ring" viewBox="0 0 100 100">
+      <circle class="hand-ring-track" cx="50" cy="50" r="45"/>
+      <circle class="hand-ring-fill"  cx="50" cy="50" r="45"/>
+    </svg>
+    <div class="hand-center hand-pct">0%</div>
+    <div class="hand-center hand-thumb">👍</div>
+    <div class="hand-label">
+      <span class="hand-prompt-text"></span>
+      <span class="hand-id-tag">ID ----</span>
+    </div>
+  </div>
+</template>
+
 <!-- ── Taxi arrival overlay ─────────────────────────────────────────────── -->
 <div id="taxi-overlay" class="hidden">
   <div class="orb orb-1"></div>
   <div class="orb orb-2"></div>
   <div class="orb orb-3"></div>
+
+  <!-- Pickup card — populated on CONFIRMED with the winning user's snapshot -->
+  <div id="pickup-card" class="glass">
+    <canvas id="pickup-snapshot" width="280" height="280"></canvas>
+    <div class="pickup-meta">
+      <span class="pickup-label">Pickup</span>
+      <span class="pickup-id" id="pickup-id">ID ----</span>
+      <span class="pickup-sub">Lock-on confirmed</span>
+    </div>
+  </div>
+
   <div id="taxi-wrap" style="position:relative">
     <div id="ground-glow">
       <div class="glow-layer glow-base"></div>
@@ -850,17 +833,17 @@
 <div id="warn-mediapipe" class="warning-overlay hidden">
   <div class="warn-icon">⚠️</div>
   <h2>Gesture detection unavailable</h2>
-  <p>MediaPipe could not be loaded. Check your internet connection and reload, or use demo mode.</p>
+  <p>MediaPipe could not be loaded. Make sure <code>vendor/mediapipe/</code> is populated (run <code>scripts/fetch-vendor.ps1</code>) or use demo mode.</p>
   <div class="space-hint">Demo mode: press <strong>Space</strong> to trigger the animation manually.</div>
 </div>
 
 <!-- ── Hidden video element for MediaPipe ───────────────────────────────── -->
 <video id="input-video" playsinline autoplay muted style="display:none"></video>
 
-<!-- ── MediaPipe CDN ─────────────────────────────────────────────────────── -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
+<!-- ── MediaPipe (local vendor — run scripts/fetch-vendor.ps1 once) ─────── -->
+<script src="vendor/mediapipe/hands/hands.js"></script>
+<script src="vendor/mediapipe/camera_utils/camera_utils.js"></script>
+<script src="vendor/mediapipe/drawing_utils/drawing_utils.js"></script>
 
 <!-- ── App scripts (order matters) ─────────────────────────────────────── -->
 <script src="src/config.js"></script>
@@ -876,10 +859,7 @@
   const canvas    = document.getElementById('cam-canvas');
   const video     = document.getElementById('input-video');
   const statusLbl = document.getElementById('status-label');
-  const timerWrap = document.getElementById('prompt-timer-wrap');
-  const secsBadge = document.getElementById('prompt-secs-badge');
 
-  // Size canvas to viewport
   function resizeCanvas() {
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -893,53 +873,41 @@
   const animation = new TaxiAnimation(document.getElementById('taxi-overlay'));
   const bridge    = new BridgeController();
 
-  // ── State label map ─────────────────────────────────────────────────────
-  const STATUS_LABELS = {
-    IDLE:       'SCANNING',
-    DETECTING:  'HAND DETECTED',
-    PROMPTING:  'AWAITING THUMBS-UP',
-    CONFIRMING: 'CONFIRMING',
-    CONFIRMED:  'CONFIRMED',
-    CANCELLED:  'CANCELLED',
-  };
+  const hexId = (id) => id.toString(16).padStart(4, '0').toUpperCase();
 
-  // ── Gesture → UI wiring ────────────────────────────────────────────────
-  detector.addEventListener('statechange', ({ detail: { state, prev } }) => {
-    ui.setState(state);
-    statusLbl.textContent = STATUS_LABELS[state] || state;
-
-    // Show/hide prompt timer bar
-    const isPrompting = state === 'PROMPTING' || state === 'CONFIRMING';
-    timerWrap.classList.toggle('active', state === 'PROMPTING');
-    secsBadge.classList.toggle('active', state === 'PROMPTING');
-
-    if (state === 'CONFIRMED') {
-      animation.play(() => {
-        bridge.trigger();
-        // Reset after a moment so demo can repeat
-        setTimeout(() => {
-          animation.hide();
-          bridge.reset();
-          detector.resetToIdle();
-        }, 3000);
-      });
-    }
+  // ── Per-hand event wiring ──────────────────────────────────────────────
+  detector.addEventListener('handStateChange', ({ detail: { id, state, wrist } }) => {
+    // upsertHand handles the "remove on transition back to IDLE" case internally.
+    ui.upsertHand(id, state, 0, wrist);
   });
 
-  detector.addEventListener('progress', ({ detail: { value } }) => {
-    ui.setDetectProgress(value);
-    const pct = document.getElementById('detect-pct');
-    if (pct) pct.textContent = Math.round(value * 100) + '%';
+  detector.addEventListener('handProgress', ({ detail: { id, state, value, wrist } }) => {
+    ui.upsertHand(id, state, value, wrist);
   });
 
-  detector.addEventListener('promptProgress', ({ detail: { value } }) => {
-    ui.setPromptProgress(value);
+  detector.addEventListener('handLost', ({ detail: { id } }) => {
+    ui.removeHand(id);
   });
 
-  detector.addEventListener('confirmProgress', ({ detail: { value } }) => {
-    ui.setConfirmProgress(value);
-    const pct = document.getElementById('confirm-pct');
-    if (pct) pct.textContent = Math.round(value * 100) + '%';
+  detector.addEventListener('tracksChanged', ({ detail: { count } }) => {
+    ui.setTrackCount(count);
+    statusLbl.textContent = count > 0 ? `TRACKING ${count} HAND${count === 1 ? '' : 'S'}` : 'SCANNING';
+  });
+
+  detector.addEventListener('confirmed', ({ detail: { id, snapshot } }) => {
+    statusLbl.textContent = `LOCKED · ID ${hexId(id)}`;
+    ui.clearHands();
+    ui.showPickup(hexId(id), snapshot);
+    animation.play(() => {
+      bridge.trigger();
+      setTimeout(() => {
+        animation.hide();
+        ui.hidePickup();
+        bridge.reset();
+        detector.resetToIdle();
+        statusLbl.textContent = 'SCANNING';
+      }, 3000);
+    });
   });
 
   detector.addEventListener('warning', ({ detail: { type } }) => {
@@ -948,8 +916,6 @@
 
   // ── Space bar fallback ──────────────────────────────────────────────────
   bridge.setupSpaceFallback(() => {
-    // If a warning overlay is up (camera denied / MediaPipe blocked), hide it
-    // so the taxi animation isn't obscured by it.
     document.getElementById('warn-camera').classList.add('hidden');
     document.getElementById('warn-mediapipe').classList.add('hidden');
     animation.play(() => {
@@ -961,8 +927,7 @@
     });
   });
 
-  // ── Audio unlock — first user gesture wakes the AudioContext so subsequent
-  // gesture-triggered chimes play. Browsers block autoplay until user interacts.
+  // ── Audio unlock — first user gesture wakes the AudioContext.
   const unlockAudio = () => {
     try { animation.audio.unlock(); } catch (_) {}
     document.removeEventListener('keydown', unlockAudio);
@@ -974,9 +939,6 @@
   document.addEventListener('pointerdown', unlockAudio, { once: false });
 
   // ── Start detection ─────────────────────────────────────────────────────
-  // Pre-flight: getUserMedia requires HTTPS (or localhost) and a supporting browser.
-  // If it's missing, surface the existing camera-warning overlay so the Space-bar
-  // fallback path is visible instead of silently sitting on a black screen.
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     ui.showWarning('camera_error');
     statusLbl.textContent = 'DEMO MODE';

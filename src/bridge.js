@@ -1,7 +1,8 @@
 // Dispatches ArrowRight to advance Figma Slides; Space bar acts as manual fallback.
-// If the URL hash carries a `#next=<https-url>` fragment, also navigates the tab there
-// after the animation — that's how the Figma launcher button hands control back to the deck.
-// Audience QR scans use the bare URL (no #next=) so they're never redirected.
+// If the URL hash is non-empty (e.g. `#presenter`), the demo tab closes itself
+// after the animation so focus returns to the original Figma deck tab.
+// Audience QR scans use the bare URL (no hash) so they never close — the demo
+// just resets to IDLE for the next person.
 class BridgeController {
   constructor() {
     this._fired = false;
@@ -21,30 +22,16 @@ class BridgeController {
     });
     document.dispatchEvent(ev);
     window.dispatchEvent(ev);
-    this._maybeNavigateToNext();
+    this._maybeCloseTab();
   }
 
-  // Returns the URL after `#next=` if present and looks like http(s); otherwise null.
-  _getReturnUrl() {
+  // Presenter mode: any non-empty URL hash means "close after the animation"
+  // so the original Figma tab regains focus. Bare URL (audience QR) → no close.
+  _maybeCloseTab() {
     const hash = window.location.hash || '';
-    const prefix = '#next=';
-    if (!hash.startsWith(prefix)) return null;
-    const url = hash.slice(prefix.length);
-    if (!/^https?:\/\//i.test(url)) return null;
-    return url;
-  }
-
-  _maybeNavigateToNext() {
-    const next = this._getReturnUrl();
-    if (!next) return;
-    console.log('[Bridge] #next= present, navigating to', next);
-    // Primary: same-tab navigation. Lands directly on the next slide if the
-    // URL is in present mode.
-    try { window.location.replace(next); } catch (_) { /* fall through to close */ }
-    // Fallback: if the navigation was blocked or never completed, close the demo
-    // tab so focus returns to the original Figma tab (still in present mode).
-    // If the navigation succeeded, the page is already gone before this fires.
-    setTimeout(() => { try { window.close(); } catch (_) {} }, 400);
+    if (!hash) return;
+    console.log('[Bridge] presenter mode (hash present), closing tab');
+    try { window.close(); } catch (_) {}
   }
 
   // Call once at startup; callback is invoked when Space is pressed.

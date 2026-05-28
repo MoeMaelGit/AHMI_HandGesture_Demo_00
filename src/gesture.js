@@ -24,6 +24,11 @@ class GestureDetector extends EventTarget {
     this._ctx = null;
     this._video = null;
 
+    // Multi-person Pose (Tasks Vision) — runs alongside Hands so each tracked
+    // hand can be associated to the matching person's face for the snapshot crop.
+    this._poseLandmarker = null;
+    this._latestPose = null;     // last PoseLandmarker result; refreshed each frame
+
     // Track pool (multi-hand)
     this._tracks = new Map();    // id → TrackedHand
     this._nextId = 1;
@@ -63,6 +68,36 @@ class GestureDetector extends EventTarget {
     });
 
     this._hands.onResults((r) => this._onResults(r));
+
+    // Pose Landmarker (Tasks Vision, multi-person). Dynamic-import the ES module
+    // bundle so we don't have to convert the rest of the app to ES modules.
+    // Failure here is non-fatal — Hands keeps working, snapshot falls back to
+    // the legacy bbox-expand crop.
+    try {
+      // Dynamic import inside a classic script resolves relative to the
+      // script's own URL (Chrome) — gesture.js is at src/, so we step up one
+      // level to reach vendor/.
+      const mod = await import('../vendor/mediapipe/tasks-vision/vision_bundle.mjs');
+      const vision = await mod.FilesetResolver.forVisionTasks(
+        'vendor/mediapipe/tasks-vision/wasm',
+      );
+      this._poseLandmarker = await mod.PoseLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: 'vendor/mediapipe/tasks-vision/pose_landmarker_full.task',
+          delegate: 'GPU',
+        },
+        runningMode: 'VIDEO',
+        numPoses: CONFIG.poseNumPoses,
+        minPoseDetectionConfidence: CONFIG.poseMinDetection,
+        minPosePresenceConfidence:  CONFIG.poseMinPresence,
+        minTrackingConfidence:      CONFIG.poseMinTracking,
+      });
+      console.log('[Gesture] PoseLandmarker ready (multi-person, numPoses=' + CONFIG.poseNumPoses + ')');
+    } catch (err) {
+      console.warn('[Gesture] PoseLandmarker failed to load — snapshot will use legacy bbox crop:', err);
+      this._poseLandmarker = null;
+    }
+
     return true;
   }
 
@@ -72,12 +107,22 @@ class GestureDetector extends EventTarget {
     try {
       this._camera = new Camera(this._video, {
         onFrame: async () => {
-          if (this._video.readyState >= 2) {
-            await this._hands.send({ image: this._video });
+          if (this._video.readyState < 2) return;
+          // Run Pose synchronously first; result is cached on this._latestPose
+          // and consumed by _matchTracks below to update each track's
+          // associated pose. Wrapped because detectForVideo can throw if
+          // timestamps drift; we just skip the frame on error.
+          if (this._poseLandmarker) {
+            try {
+              this._latestPose = this._poseLandmarker.detectForVideo(
+                this._video, performance.now(),
+              );
+            } catch (_) { /* skip this frame */ }
           }
+          await this._hands.send({ image: this._video });
         },
-        width: 1280,
-        height: 720,
+        width: CONFIG.cameraWidth,
+        height: CONFIG.cameraHeight,
       });
       await this._camera.start();
       console.log('[Gesture] Camera started');
@@ -189,13 +234,14 @@ class GestureDetector extends EventTarget {
       t.landmarks = c.lm;
       t.wrist = c.wrist;
       t.bbox = c.bbox;
+      this._associateTrackToPose(t);
     }
 
     for (let ci = 0; ci < currentHands.length; ci++) {
       if (usedCurrent.has(ci)) continue;
       const c = currentHands[ci];
       const id = this._nextId++;
-      this._tracks.set(id, {
+      const newTrack = {
         id,
         state: 'IDLE',
         holdStart: null,
@@ -208,8 +254,34 @@ class GestureDetector extends EventTarget {
         wrist: c.wrist,
         bbox: c.bbox,
         matchedThisFrame: true,
-      });
+        poseLandmarks: null,    // refreshed each frame by _associateTrackToPose
+      };
+      this._associateTrackToPose(newTrack);
+      this._tracks.set(id, newTrack);
     }
+  }
+
+  // For a track that has a fresh wrist this frame, find the multi-person Pose
+  // skeleton whose left- or right-wrist landmark is nearest. Caches the matched
+  // skeleton on the track so the snapshot crop has access to nose + shoulders.
+  // Sets t.poseLandmarks = null if no pose is within wristMatchMaxDist.
+  _associateTrackToPose(t) {
+    t.poseLandmarks = null;
+    const pose = this._latestPose;
+    if (!pose || !pose.landmarks || pose.landmarks.length === 0) return;
+
+    let bestD = CONFIG.wristMatchMaxDist;
+    let bestPose = null;
+    for (const skeleton of pose.landmarks) {
+      // Pose landmark indices: 15 = left wrist, 16 = right wrist.
+      const lw = skeleton[15];
+      const rw = skeleton[16];
+      const dl = lw ? Math.hypot(lw.x - t.wrist.x, lw.y - t.wrist.y) : Infinity;
+      const dr = rw ? Math.hypot(rw.x - t.wrist.x, rw.y - t.wrist.y) : Infinity;
+      const d = Math.min(dl, dr);
+      if (d < bestD) { bestD = d; bestPose = skeleton; }
+    }
+    t.poseLandmarks = bestPose;
   }
 
   _pruneTracks() {
@@ -307,7 +379,7 @@ class GestureDetector extends EventTarget {
         if (now - t.holdStart >= CONFIG.gestureHoldMs) {
           this._winnerId = t.id;
           this._locked = true;
-          const snapshot = this._captureUserSnapshot(t.bbox);
+          const snapshot = this._captureUserSnapshot(t);
           this._setTrackState(t, 'CONFIRMED');
           this._emit('confirmed', { id: t.id, bbox: t.bbox, snapshot });
         }
@@ -377,28 +449,26 @@ class GestureDetector extends EventTarget {
     }
   }
 
-  // ─── Snapshot capture (winner crop, expanded to capture face + torso) ────────
+  // ─── Snapshot capture (winner portrait, driven by Pose if available) ────────
+  // Returns a 280×280 Canvas, or null if no usable crop could be produced
+  // (UI shows a "?" placeholder in that case).
 
-  _captureUserSnapshot(bbox) {
+  _captureUserSnapshot(t) {
     const v = this._video;
     if (!v || !v.videoWidth || !v.videoHeight) return null;
 
-    const cx = bbox.x + bbox.w / 2;
-    const cyHand = bbox.y + bbox.h / 2;
-    const side = Math.max(bbox.w, bbox.h) * CONFIG.snapshotExpandFactor;
-    // Bias the crop upward so the hand sits at ~75% from the top — face +
-    // shoulders fill the upper 75%, hand anchors the bottom. Makes "who
-    // ordered the taxi" readable in the corner card.
-    const cy = cyHand - side * 0.25;
-    let sx = cx - side / 2;
-    let sy = cy - side / 2;
-    let sw = side;
-    let sh = side;
-    if (sx < 0) { sw += sx; sx = 0; }
-    if (sy < 0) { sh += sy; sy = 0; }
-    if (sx + sw > 1) sw = 1 - sx;
-    if (sy + sh > 1) sh = 1 - sy;
-    if (sw <= 0 || sh <= 0) return null;
+    // Pose available + matched this track → portrait crop (best case).
+    // Pose available but no match for this track (occluded torso, edge of
+    // frame, sitting user) → return null so UI shows the "?" placeholder.
+    // Pose not loaded at all (init failure) → graceful degradation to the
+    // legacy hand-bbox crop so the demo still produces something.
+    let crop = null;
+    if (this._poseLandmarker) {
+      crop = this._poseCrop(t.poseLandmarks);   // null on no-match
+    } else {
+      crop = this._handBboxCrop(t.bbox);        // legacy path
+    }
+    if (!crop) return null;
 
     const out = document.createElement('canvas');
     out.width = 280;
@@ -410,11 +480,58 @@ class GestureDetector extends EventTarget {
     octx.scale(-1, 1);
     octx.drawImage(
       v,
-      sx * v.videoWidth, sy * v.videoHeight, sw * v.videoWidth, sh * v.videoHeight,
+      crop.sx * v.videoWidth, crop.sy * v.videoHeight,
+      crop.sw * v.videoWidth, crop.sh * v.videoHeight,
       0, 0, out.width, out.height,
     );
     octx.restore();
     return out;
+  }
+
+  // Crop from the Pose skeleton: square centred on nose, side = ~2.8 ×
+  // shoulder span (face + a bit of torso). Returns null if the skeleton is
+  // missing the required landmarks.
+  _poseCrop(pose) {
+    if (!pose) return null;
+    const nose = pose[0];
+    const ls = pose[11];
+    const rs = pose[12];
+    if (!nose || !ls || !rs) return null;
+
+    const shoulderSpan = Math.hypot(ls.x - rs.x, ls.y - rs.y);
+    if (shoulderSpan <= 0.01) return null;     // skeleton is degenerate
+
+    const side = Math.min(Math.max(shoulderSpan * 2.8, 0.18), 0.9);
+    const cx = nose.x;
+    // Shift centre slightly below the nose so face fills the upper portion
+    // with a thin slice of shoulders below — same composition as the legacy
+    // hand-bbox crop, just driven by the pose.
+    const cy = nose.y + side * 0.18;
+    return this._clampSquareCrop(cx, cy, side);
+  }
+
+  // Legacy fallback: square crop expanded from the hand bbox, biased upward
+  // so the face fills the top ~75 %. Used when Pose has no match for this
+  // hand (occluded torso, sitting user, edge of frame).
+  _handBboxCrop(bbox) {
+    if (!bbox) return null;
+    const cx = bbox.x + bbox.w / 2;
+    const side = Math.max(bbox.w, bbox.h) * CONFIG.snapshotExpandFactor;
+    const cy = (bbox.y + bbox.h / 2) - side * 0.25;
+    return this._clampSquareCrop(cx, cy, side);
+  }
+
+  _clampSquareCrop(cx, cy, side) {
+    let sx = cx - side / 2;
+    let sy = cy - side / 2;
+    let sw = side;
+    let sh = side;
+    if (sx < 0) { sw += sx; sx = 0; }
+    if (sy < 0) { sh += sy; sy = 0; }
+    if (sx + sw > 1) sw = 1 - sx;
+    if (sy + sh > 1) sh = 1 - sy;
+    if (sw <= 0 || sh <= 0) return null;
+    return { sx, sy, sw, sh };
   }
 
   // ─── Gesture classifiers ──────────────────────────────────────────────────────

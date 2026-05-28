@@ -71,15 +71,37 @@ class UIController {
   }
 
   // Show the pickup card with the cropped snapshot of the winning user.
+  // If snapshotCanvas is null (pose found no face match for the winning hand),
+  // render a "?" placeholder so the UI is honest about uncertainty rather than
+  // showing a stale or wrong crop.
   showPickup(idHex, snapshotCanvas) {
     if (!this._pickupCard) return;
-    if (snapshotCanvas && this._pickupCanvas) {
+    if (this._pickupCanvas) {
       const ctx = this._pickupCanvas.getContext('2d');
-      ctx.clearRect(0, 0, this._pickupCanvas.width, this._pickupCanvas.height);
-      ctx.drawImage(snapshotCanvas, 0, 0, this._pickupCanvas.width, this._pickupCanvas.height);
+      const w = this._pickupCanvas.width;
+      const h = this._pickupCanvas.height;
+      ctx.clearRect(0, 0, w, h);
+      if (snapshotCanvas) {
+        ctx.drawImage(snapshotCanvas, 0, 0, w, h);
+      } else {
+        this._drawPickupPlaceholder(ctx, w, h);
+      }
     }
     if (this._pickupId) this._pickupId.textContent = `ID ${idHex}`;
     this._pickupCard.classList.add('visible');
+  }
+
+  _drawPickupPlaceholder(ctx, w, h) {
+    ctx.fillStyle = '#0a1428';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(79, 195, 247, 0.55)';
+    ctx.font = '700 ' + Math.round(h * 0.55) + 'px "JetBrains Mono", Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', w / 2, h / 2);
+    ctx.font = '500 ' + Math.round(h * 0.07) + 'px "JetBrains Mono", Consolas, monospace';
+    ctx.fillStyle = 'rgba(122, 173, 204, 0.85)';
+    ctx.fillText('FACE NOT MATCHED', w / 2, h * 0.88);
   }
 
   hidePickup() {

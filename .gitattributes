@@ -1,0 +1,6 @@
+# MediaPipe vendor binaries — never apply line-ending conversion (would corrupt them)
+*.wasm   binary
+*.task   binary
+*.tflite binary
+*.data   binary
+*.binarypb binary

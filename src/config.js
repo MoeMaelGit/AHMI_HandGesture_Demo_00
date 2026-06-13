@@ -21,6 +21,7 @@ const _baseConfig = {
   poseMinPresence: 0.50,
   poseMinTracking: 0.50,
   wristMatchMaxDist: 0.12,        // normalized distance to associate a Hands wrist to a Pose wrist
+  poseMissFramesToLoosen: 30,     // frames Pose must show a raised-but-untracked hand before signalling the tuner to loosen (~1 s at 30 fps)
 
   // ── Gesture timing ──────────────────────────────────────────────
   gestureHoldMs: 2000,            // palm hold → PROMPTING; thumbs-up hold → CONFIRMED
@@ -35,11 +36,13 @@ const _baseConfig = {
   // Orientation-independent, so a rotated open hand can't be mistaken for a fist.
   fingerCurlRatioMax: 1.35,       // below this → finger counts as curled (thumbs-up needs ≥3 curled)
   fingerExtendRatioMin: 1.8,      // above this → finger counts as extended (open palm needs ≥3 extended)
+  palmMaxTiltDeg: 40,             // open palm must point up within this angle of vertical (wiggle room; not rigidly vertical). Lower = stricter "hand up"
 
   // ── Multi-hand tracking ─────────────────────────────────────────
   trackMatchMaxDist: 0.18,        // normalized wrist distance to re-associate a track between frames
   trackMissingMaxFrames: 30,      // frames a track can survive without a match before being dropped (~1 s at 30 fps)
   trackWarmupFrames: 5,           // matched frames a track must accumulate before its state machine runs (kills ghosts)
+  gestureStaleFrames: 6,          // unmatched frames before an active track's countdown resets to IDLE (~0.2 s) — stops a dropped-hand countdown from being inherited by another hand
   snapshotExpandFactor: 5.0,      // (legacy fallback only) hand bbox → user bbox: side multiplier
 
   // ── Warnings ────────────────────────────────────────────────────

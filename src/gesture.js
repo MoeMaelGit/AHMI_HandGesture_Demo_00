@@ -34,6 +34,7 @@ class GestureDetector extends EventTarget {
     this._nextId = 1;
     this._frameCount = 0;
     this._lastTrackCount = 0;
+    this._missStreak = 0;        // consecutive frames Pose sees a raised hand the Hands model missed
 
     // Global lock-on / lifecycle
     this._winnerId = null;
@@ -197,6 +198,7 @@ class GestureDetector extends EventTarget {
 
     this._matchTracks(currentHands);
     this._pruneTracks();
+    this._resetStaleGestures();
 
     // Step the per-hand state machine only for tracks matched this frame and
     // past the warmup gate. Tracks that vanish before clearing warmup never
@@ -213,6 +215,8 @@ class GestureDetector extends EventTarget {
       this._lastTrackCount = count;
       this._emit('tracksChanged', { count });
     }
+
+    this._checkRaisedHandMiss();
 
     this._drawTracks();
   }
@@ -310,6 +314,69 @@ class GestureDetector extends EventTarget {
         this._tracks.delete(id);
         this._emit('handLost', { id });
       }
+    }
+  }
+
+  // When a hand leaves mid-gesture the track lingers (for ID stability) but its
+  // countdown must NOT survive — otherwise the frozen overlay sits there and a
+  // different hand sliding into that spot re-associates and inherits the
+  // in-progress gesture. So if an active track goes unmatched for more than a
+  // brief grace (gestureStaleFrames), reset it to IDLE: the overlay clears and
+  // any hand that re-occupies the spot starts a fresh gesture. The track ID
+  // survives until trackMissingMaxFrames for continuity; the winner during the
+  // CONFIRMED animation lock is never reached here (locked path returns early).
+  _resetStaleGestures() {
+    for (const t of this._tracks.values()) {
+      if (t.matchedThisFrame || t.state === 'IDLE' || t.id === this._winnerId) continue;
+      if (this._frameCount - t.lastSeenFrame > CONFIG.gestureStaleFrames) {
+        t.holdStart = null;
+        t.promptStart = null;
+        t.detectDropFrames = 0;
+        t.confirmDropFrames = 0;
+        t.awaitingPalm = false;
+        this._setTrackState(t, 'IDLE');   // emits handStateChange → UI removes the overlay
+      }
+    }
+  }
+
+  // True when a Pose skeleton shows a raised hand (wrist above its elbow) that
+  // no Hands track is sitting near. Pose sees the whole person even at distances
+  // where the Hands model can't lock the small hand, so this is a genuine
+  // "the hand model is missing a real hand" signal.
+  _raisedHandMissed() {
+    const pose = this._latestPose;
+    if (!pose || !pose.landmarks) return false;
+    for (const sk of pose.landmarks) {
+      // (wrist, elbow) index pairs — 15/13 left, 16/14 right.
+      for (const [wi, ei] of [[15, 13], [16, 14]]) {
+        const wrist = sk[wi], elbow = sk[ei];
+        if (!wrist || !elbow) continue;
+        if (wrist.y >= elbow.y - 0.02) continue;   // hand not raised above the elbow
+        let tracked = false;
+        for (const t of this._tracks.values()) {
+          if (Math.hypot(t.wrist.x - wrist.x, t.wrist.y - wrist.y) <= CONFIG.wristMatchMaxDist) {
+            tracked = true; break;
+          }
+        }
+        if (!tracked) return true;
+      }
+    }
+    return false;
+  }
+
+  // Far-field robustness signal for the adaptive Tuner. Unlike a bare "no track"
+  // signal it stays silent during idle (no raised hand → nothing to miss), so it
+  // only fires when a hand is genuinely present but undetected. Emits 'handMissed'
+  // after the miss persists ~1 s so brief Pose jitter doesn't trigger a loosen.
+  _checkRaisedHandMiss() {
+    if (this._raisedHandMissed()) {
+      this._missStreak++;
+      if (this._missStreak >= CONFIG.poseMissFramesToLoosen) {
+        this._missStreak = 0;     // re-arm; a sustained miss emits ~once per second
+        this._emit('handMissed', {});
+      }
+    } else {
+      this._missStreak = 0;
     }
   }
 
@@ -449,6 +516,11 @@ class GestureDetector extends EventTarget {
     ctx.translate(w, 0);
     ctx.scale(-1, 1);
     for (const t of this._tracks.values()) {
+      // Don't draw a frozen skeleton for a hand that has left the frame: only
+      // render tracks seen within the last couple frames (tolerates a 1-frame
+      // detection gap). The winner is always drawn so its skeleton stays up
+      // through the CONFIRMED animation lock.
+      if (this._frameCount - t.lastSeenFrame > 2 && t.id !== this._winnerId) continue;
       const c = this._trackColors(t);
       drawConnectors(ctx, t.landmarks, HAND_CONNECTIONS, { color: c.line, lineWidth: c.lineWidth });
       drawLandmarks(ctx, t.landmarks, {
@@ -589,19 +661,22 @@ class GestureDetector extends EventTarget {
       .length;
     if (extended < 3) return false;
 
-    // Orientation gate: the palm must be RAISED and pointing UP — an intentional
-    // hail, not a hand resting on a lap/desk or hanging at the side. Here "up"
-    // is image-space (smaller y), which is legitimately gravity/camera-relative
-    // (unlike curl, which must stay rotation-free). Require ≥3 fingertips above
-    // their own MCP and the hand upright (knuckles above the wrist). Strict
-    // inequalities keep it scale-independent, so a small far-field hand still
-    // qualifies as long as it's actually pointing up.
-    const fingersUp = GestureDetector._FINGERS
-      .filter(([m, p, t]) => lm[t].y < lm[m].y)
-      .length;
-    const handUpright = lm[9].y < lm[0].y;   // middle-finger MCP above the wrist
-
-    return fingersUp >= 3 && handUpright;
+    // Orientation gate: the palm must be RAISED and pointing UP within an angle
+    // tolerance — an intentional hail, not a hand at rest, hanging, or held near
+    // horizontal (e.g. gripping a phone). The hand axis is wrist → middle
+    // FINGERTIP (lm0 → lm12); its tilt from straight-up must be ≤ palmMaxTiltDeg.
+    // Using the fingertip (not the knuckle) gives a long lever arm, so the angle
+    // is far less sensitive to landmark noise — important at distance, where the
+    // short wrist→knuckle vector was noisy enough to reject a genuine raised
+    // palm. Fingers are already confirmed extended above, so lm12 is reliably
+    // far from the wrist. "Up" is image-space (gravity-relative — legitimate for
+    // orientation, unlike curl which stays rotation-free), and the angle is a
+    // ratio of distances, so it's scale-independent.
+    const axisX = lm[12].x - lm[0].x;
+    const rise = lm[0].y - lm[12].y;           // >0 when the fingertip is above the wrist
+    if (rise <= 0) return false;               // pointing sideways or down
+    const tiltDeg = Math.atan2(Math.abs(axisX), rise) * 180 / Math.PI;
+    return tiltDeg <= CONFIG.palmMaxTiltDeg;
   }
 
   _isThumbsUp(lm) {

@@ -30,6 +30,7 @@ class TelemetryCollector {
     // "Since last poll" flags the Tuner consumes and resets each tick.
     this._spaceSinceLastPoll = false;
     this._abandonsSinceLastPoll = 0;
+    this._poseMissSinceLastPoll = false;   // Pose saw a raised hand the Hands model missed
 
     this._flushed = false;
 
@@ -64,6 +65,12 @@ class TelemetryCollector {
       if (this._firstDetectAt !== null) this._d2c = Date.now() - this._firstDetectAt;
       this._persistSession();   // a completed run is the strongest signal
     });
+
+    // Pose sees a raised hand the Hands model can't lock (far-field / low
+    // confidence). Strong "loosen detection" cue for the Tuner.
+    detector.addEventListener('handMissed', () => {
+      this._poseMissSinceLastPoll = true;
+    });
   }
 
   // Called from the Space-bar fallback — the user bypassed gesture detection,
@@ -83,9 +90,11 @@ class TelemetryCollector {
       lastTtfd: this._firstDetectAt === null ? null : this._firstDetectAt - this._sessionStart,
       spaceSinceLastPoll: this._spaceSinceLastPoll,
       recentAbandons: this._abandonsSinceLastPoll,
+      poseMissSinceLastPoll: this._poseMissSinceLastPoll,
     };
     this._spaceSinceLastPoll = false;
     this._abandonsSinceLastPoll = 0;
+    this._poseMissSinceLastPoll = false;
     return sig;
   }
 

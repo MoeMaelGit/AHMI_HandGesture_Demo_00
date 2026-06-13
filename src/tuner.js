@@ -103,8 +103,14 @@ const Tuner = (() => {
   // Decide a single bounded action from the live signals.
   function _decide(sig) {
     const struggling =
+      // Cold start: camera up a while and no hand has ever been tracked.
       (sig.msSinceStart > STRUGGLE_AFTER_MS && !sig.handsEverDetected) ||
-      sig.spaceSinceLastPoll;
+      // User fell back to the Space bar — detection failed them.
+      sig.spaceSinceLastPoll ||
+      // Pose sees a raised hand the Hands model is missing (far-field / low
+      // light). Fires even after an earlier detection, so it keeps adapting
+      // when the user steps back — and stays silent during idle.
+      sig.poseMissSinceLastPoll;
     if (struggling) return 'loosen';
 
     // Phantom-trigger proxy (the only client-side false-positive signal we have):

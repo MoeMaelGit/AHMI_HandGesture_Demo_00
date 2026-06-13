@@ -30,7 +30,9 @@ class UIController {
   }
 
   // Create / update / remove a single hand overlay based on its current state.
-  upsertHand(id, state, value, wrist) {
+  // `hint` is an optional per-frame cue from the detector — currently 'repalm',
+  // emitted when a DETECTING hand broke the palm early and the count restarted.
+  upsertHand(id, state, value, wrist, hint) {
     const isActive = state === 'DETECTING' || state === 'PROMPTING' || state === 'CONFIRMING';
     if (!isActive) {
       this.removeHand(id);
@@ -47,6 +49,12 @@ class UIController {
 
     entry.root.classList.remove('is-detecting', 'is-prompting', 'is-confirming');
     entry.root.classList.add(`is-${state.toLowerCase()}`);
+
+    // Early palm-break in DETECTING → swap the prompt to "hold palm up" and zero
+    // the ring, so the user knows the 2 s count restarted.
+    const needsPalm = hint === 'repalm';
+    entry.root.classList.toggle('needs-palm', needsPalm);
+    if (needsPalm) value = 0;
 
     // PROMPTING progress is 0→1 as the window depletes — render as a shrinking ring.
     const ringVal = state === 'PROMPTING' ? 1 - value : value;

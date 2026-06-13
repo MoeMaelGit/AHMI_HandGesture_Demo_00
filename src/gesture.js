@@ -139,6 +139,18 @@ class GestureDetector extends EventTarget {
     if (this._camera) this._camera.stop();
   }
 
+  // Live-reconfigure MediaPipe Hands detection/tracking confidence. Called by
+  // the adaptive Tuner; only invoked when a value actually changed (setOptions
+  // triggers a graph reconfigure, so we avoid calling it per-frame).
+  setDetectionParams(det, track) {
+    if (!this._hands) return;
+    try {
+      this._hands.setOptions({ minDetectionConfidence: det, minTrackingConfidence: track });
+    } catch (e) {
+      console.warn('[Gesture] setDetectionParams failed', e);
+    }
+  }
+
   // Called externally after CONFIRMED animation finishes.
   resetToIdle() {
     clearTimeout(this._cancelTimer);
@@ -170,15 +182,18 @@ class GestureDetector extends EventTarget {
 
     const now = Date.now();
 
-    // Build the current frame's hand candidates (filtered by min area).
+    // Build the current frame's hand candidates. NB: no min-area filter here.
+    // The area gate is applied only when SPAWNING a new track (see _matchTracks);
+    // an already-tracked hand keeps matching even as its bbox shrinks — e.g.
+    // curling an open palm into a thumbs-up, or the user moving farther away.
+    // Pre-filtering here used to drop the curled hand mid-gesture at distance.
     const currentHands = (results.multiHandLandmarks || [])
       .map(lm => ({
         lm,
         wrist: { x: lm[0].x, y: lm[0].y },
         bbox: this._bbox(lm),
         area: this._boundingArea(lm),
-      }))
-      .filter(c => c.area >= CONFIG.minHandAreaFraction);
+      }));
 
     this._matchTracks(currentHands);
     this._pruneTracks();
@@ -240,6 +255,10 @@ class GestureDetector extends EventTarget {
     for (let ci = 0; ci < currentHands.length; ci++) {
       if (usedCurrent.has(ci)) continue;
       const c = currentHands[ci];
+      // Min-area gate applies only to NEW tracks — rejects tiny background
+      // hand-like detections from spawning phantom tracks. Existing tracks
+      // already matched above bypass this, so curling/distance can't drop them.
+      if (c.area < CONFIG.minHandAreaFraction) continue;
       const id = this._nextId++;
       const newTrack = {
         id,
@@ -248,6 +267,7 @@ class GestureDetector extends EventTarget {
         promptStart: null,
         confirmDropFrames: 0,
         detectDropFrames: 0,
+        awaitingPalm: false,
         matchedFrameCount: 1,
         lastSeenFrame: this._frameCount,
         landmarks: c.lm,
@@ -302,36 +322,43 @@ class GestureDetector extends EventTarget {
       case 'IDLE': {
         if (this._isOpenPalm(lm)) {
           t.holdStart = now;
+          t.awaitingPalm = false;
           this._setTrackState(t, 'DETECTING');
         }
         break;
       }
 
       case 'DETECTING': {
-        // Direct shortcut: user curled into a clean thumbs-up while we were
-        // still counting the palm hold. Honour the intent — jump straight to
-        // CONFIRMING with a fresh hold timer. This prevents the multi-hand
-        // footgun where switching one of several palms to a thumbs-up while
-        // mid-DETECTING dropped the hand back to IDLE.
-        if (this._isThumbsUp(lm)) {
-          t.holdStart = now;
-          t.confirmDropFrames = 0;
-          t.detectDropFrames = 0;
-          this._setTrackState(t, 'CONFIRMING');
-          break;
-        }
+        // The 2 s open-palm hold is mandatory — there is no shortcut to
+        // CONFIRMING from here. The only exit toward confirmation is completing
+        // the full hold → PROMPTING → thumbs-up. (The session-7 thumbs-up
+        // shortcut was removed: the spec requires the palm be held the full 2 s,
+        // and a thumbs-up mid-hold must NOT bypass it.)
         if (!this._isOpenPalm(lm)) {
-          // Hysteresis: tolerate brief shape flickers (palm→fist transition,
-          // tracking jitter) the same way CONFIRMING does. Only reset to IDLE
-          // after the palm has been continuously absent for N frames.
+          // Hysteresis: tolerate brief shape flickers (tracking jitter) before
+          // reacting. Past that, treat it as the user breaking the palm early:
+          // restart the count and prompt them to hold the palm up, rather than
+          // silently advancing or dropping to IDLE. A hand that is actually
+          // lowered is pruned → handLost → IDLE by the normal track lifecycle.
           t.detectDropFrames++;
           if (t.detectDropFrames >= CONFIG.detectDropMaxFrames) {
-            t.detectDropFrames = 0;
-            this._setTrackState(t, 'IDLE');
+            t.holdStart = now;          // count restarts from zero
+            t.awaitingPalm = true;
+            this._emit('handProgress', {
+              id: t.id, state: 'DETECTING', value: 0, wrist: t.wrist,
+              bbox: t.bbox, hint: 'repalm',
+            });
           }
           break;
         }
+        // Clean palm seen this frame.
         t.detectDropFrames = 0;
+        if (t.awaitingPalm) {
+          // Palm just returned after an early break — the timer was already
+          // reset to `now` on the break, so the 2 s starts fresh here.
+          t.awaitingPalm = false;
+          t.holdStart = now;
+        }
         const value = Math.min((now - t.holdStart) / CONFIG.gestureHoldMs, 1);
         this._emit('handProgress', {
           id: t.id, state: 'DETECTING', value, wrist: t.wrist, bbox: t.bbox,
@@ -536,43 +563,66 @@ class GestureDetector extends EventTarget {
 
   // ─── Gesture classifiers ──────────────────────────────────────────────────────
 
+  // Per-finger extension ratio: tip-to-MCP distance over PIP-to-MCP distance.
+  // A straight finger spans ~2.5–3× its first segment; a folded finger curls
+  // the tip back toward the knuckle so the ratio collapses below ~1.2. Computed
+  // from 2D distances, so it is invariant to hand rotation — unlike the old
+  // image-y comparisons that read a sideways open hand as a fist.
+  _fingerRatio(lm, mcp, pip, tip) {
+    const dTipMcp = Math.hypot(lm[tip].x - lm[mcp].x, lm[tip].y - lm[mcp].y);
+    const dPipMcp = Math.hypot(lm[pip].x - lm[mcp].x, lm[pip].y - lm[mcp].y);
+    return dTipMcp / (dPipMcp + 1e-6);
+  }
+
+  // [mcp, pip, tip] landmark indices for the four non-thumb fingers.
+  static get _FINGERS() {
+    return [[5, 6, 8], [9, 10, 12], [13, 14, 16], [17, 18, 20]];
+  }
+
   _isOpenPalm(lm) {
-    // Guard: curled fingers + upward thumb = thumbs-up, NOT an open palm.
-    const thumbUp    = lm[4].y < lm[2].y && lm[4].y < lm[5].y;
-    const fistCurled = [
-      lm[8].y  > lm[5].y  - 0.06,
-      lm[12].y > lm[9].y  - 0.06,
-      lm[16].y > lm[13].y - 0.06,
-      lm[20].y > lm[17].y - 0.06,
-    ].filter(Boolean).length >= 3;
-    if (thumbUp && fistCurled) return false;
+    // Reject the thumbs-up shape first so a fist+thumb can't double-trigger.
+    if (this._isThumbsUp(lm)) return false;
 
-    const extended = [
-      lm[8].y  < lm[6].y  + 0.02,
-      lm[12].y < lm[10].y + 0.02,
-      lm[16].y < lm[14].y + 0.02,
-      lm[20].y < lm[18].y + 0.02,
-    ].filter(Boolean).length;
+    // ≥3 of 4 fingers genuinely extended (ratio-based, rotation-independent).
+    const extended = GestureDetector._FINGERS
+      .filter(([m, p, t]) => this._fingerRatio(lm, m, p, t) > CONFIG.fingerExtendRatioMin)
+      .length;
+    if (extended < 3) return false;
 
-    const thumbOpen = lm[4].y < lm[1].y + 0.02;
-    return extended >= 3 && thumbOpen;
+    // Orientation gate: the palm must be RAISED and pointing UP — an intentional
+    // hail, not a hand resting on a lap/desk or hanging at the side. Here "up"
+    // is image-space (smaller y), which is legitimately gravity/camera-relative
+    // (unlike curl, which must stay rotation-free). Require ≥3 fingertips above
+    // their own MCP and the hand upright (knuckles above the wrist). Strict
+    // inequalities keep it scale-independent, so a small far-field hand still
+    // qualifies as long as it's actually pointing up.
+    const fingersUp = GestureDetector._FINGERS
+      .filter(([m, p, t]) => lm[t].y < lm[m].y)
+      .length;
+    const handUpright = lm[9].y < lm[0].y;   // middle-finger MCP above the wrist
+
+    return fingersUp >= 3 && handUpright;
   }
 
   _isThumbsUp(lm) {
-    const thumbExtended = lm[4].y < lm[2].y;
-    const aboveMCPs = [
-      lm[4].y < lm[5].y,
-      lm[4].y < lm[9].y,
-      lm[4].y < lm[13].y,
-      lm[4].y < lm[17].y,
-    ].filter(Boolean).length >= 3;
-    const curled = [
-      lm[8].y  > lm[5].y  - 0.08,
-      lm[12].y > lm[9].y  - 0.08,
-      lm[16].y > lm[13].y - 0.08,
-      lm[20].y > lm[17].y - 0.08,
-    ].filter(Boolean).length;
-    return thumbExtended && aboveMCPs && curled >= 3;
+    // "Up" is genuinely orientation-dependent, so keep an image-y check: the
+    // thumb tip must sit above its own MCP and above the four finger knuckles.
+    const thumbUp = lm[4].y < lm[2].y &&
+      lm[4].y < lm[5].y && lm[4].y < lm[9].y &&
+      lm[4].y < lm[13].y && lm[4].y < lm[17].y;
+    if (!thumbUp) return false;
+
+    // Thumb genuinely extended (not a curled fist with the thumb merely highest).
+    const thumbExtended = this._fingerRatio(lm, 2, 3, 4) > CONFIG.fingerExtendRatioMin * 0.7;
+
+    // The fix: require ≥3 fingers actually folded, measured by curl ratio —
+    // a rotated open hand has high ratios and fails this, so it can no longer
+    // be mistaken for a thumbs-up.
+    const curled = GestureDetector._FINGERS
+      .filter(([m, p, t]) => this._fingerRatio(lm, m, p, t) < CONFIG.fingerCurlRatioMax)
+      .length;
+
+    return thumbExtended && curled >= 3;
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -259,6 +259,9 @@
     .hand-overlay.is-detecting .hand-prompt-text  { display: inline-block; }
     .hand-overlay.is-detecting .hand-prompt-text::before  { content: 'HOLD STILL'; }
     .hand-overlay.is-prompting .hand-prompt-text::before  { content: 'THUMBS UP'; }
+    /* Early palm-break: count restarted — tell the user to hold the palm up. */
+    .hand-overlay.is-detecting.needs-palm .hand-prompt-text { color: var(--orange); border-color: rgba(255,126,0,0.45); }
+    .hand-overlay.is-detecting.needs-palm .hand-prompt-text::before { content: 'HOLD PALM UP · 2S'; }
     .hand-overlay.is-confirming .hand-prompt-text { display: inline-block; color: var(--accent); }
     .hand-overlay.is-confirming .hand-prompt-text::before { content: 'CONFIRMING'; }
 
@@ -846,7 +849,9 @@
 <script src="vendor/mediapipe/drawing_utils/drawing_utils.js"></script>
 
 <!-- ── App scripts (order matters) ─────────────────────────────────────── -->
+<script src="src/tuner.js"></script>      <!-- before config: seeds the learned baseline -->
 <script src="src/config.js"></script>
+<script src="src/telemetry.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/gesture.js"></script>
 <script src="src/ui.js"></script>
@@ -872,6 +877,8 @@
   const ui        = new UIController();
   const animation = new TaxiAnimation(document.getElementById('taxi-overlay'));
   const bridge    = new BridgeController();
+  const telemetry = new TelemetryCollector();
+  telemetry.attach(detector);
 
   const hexId = (id) => id.toString(16).padStart(4, '0').toUpperCase();
 
@@ -881,8 +888,8 @@
     ui.upsertHand(id, state, 0, wrist);
   });
 
-  detector.addEventListener('handProgress', ({ detail: { id, state, value, wrist } }) => {
-    ui.upsertHand(id, state, value, wrist);
+  detector.addEventListener('handProgress', ({ detail: { id, state, value, wrist, hint } }) => {
+    ui.upsertHand(id, state, value, wrist, hint);
   });
 
   detector.addEventListener('handLost', ({ detail: { id } }) => {
@@ -916,6 +923,7 @@
 
   // ── Space bar fallback ──────────────────────────────────────────────────
   bridge.setupSpaceFallback(() => {
+    telemetry.recordSpace();   // detection failed the user → "loosen" signal for the tuner
     document.getElementById('warn-camera').classList.add('hidden');
     document.getElementById('warn-mediapipe').classList.add('hidden');
     animation.play(() => {
@@ -948,7 +956,10 @@
   const initOk = await detector.init(video, canvas);
   if (initOk) {
     const startOk = await detector.start();
-    if (!startOk) {
+    if (startOk) {
+      // Camera live → start the adaptive auto-tuner (no-op under ?notune).
+      Tuner.startAdaptiveLoop(telemetry, detector);
+    } else {
       ui.showWarning('camera_error');
       statusLbl.textContent = 'CAMERA ERROR';
     }

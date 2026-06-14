@@ -630,16 +630,17 @@ class GestureDetector extends EventTarget {
     const v = this._video;
     if (!v || !v.videoWidth || !v.videoHeight) return null;
 
-    // Pose available + matched this track → portrait crop (best case).
-    // Pose available but no match for this track (occluded torso, edge of
-    // frame, sitting user) → return null so UI shows the "?" placeholder.
-    // Pose not loaded at all (init failure) → graceful degradation to the
-    // legacy hand-bbox crop so the demo still produces something.
+    // Best case: Pose matched this track → tight, face-centred portrait crop.
+    // Pose available but no face match (occluded torso, sitting user, edge of
+    // frame) → fall back to a crop CENTRED ON THE HAND that was detected, rather
+    // than a "?" placeholder — we honestly show what we captured.
+    // Pose not loaded at all (init failure) → legacy face-biased hand-bbox crop.
     let crop = null;
     if (this._poseLandmarker) {
-      crop = this._poseCrop(t.poseLandmarks);   // null on no-match
+      crop = t.poseLandmarks ? this._poseCrop(t.poseLandmarks) : null;
+      if (!crop) crop = this._handCenteredCrop(t.bbox);
     } else {
-      crop = this._handBboxCrop(t.bbox);        // legacy path
+      crop = this._handBboxCrop(t.bbox);
     }
     if (!crop) return null;
 
@@ -661,31 +662,49 @@ class GestureDetector extends EventTarget {
     return out;
   }
 
-  // Crop from the Pose skeleton: square centred on nose, side = ~2.8 ×
-  // shoulder span (face + a bit of torso). Returns null if the skeleton is
-  // missing the required landmarks.
+  // Face-centred crop from the Pose skeleton. Estimates head width from the
+  // actual face landmarks — ear-to-ear (lm7,lm8), else eye-outer span
+  // (lm3,lm6), else a fraction of the shoulder span — and frames the head to
+  // fill the portrait (head ≈ half the crop). Much tighter than the old
+  // shoulder-span×2.8 crop, which zoomed out to torso. Returns null if it has
+  // no usable landmarks.
   _poseCrop(pose) {
     if (!pose) return null;
     const nose = pose[0];
-    const ls = pose[11];
-    const rs = pose[12];
-    if (!nose || !ls || !rs) return null;
+    if (!nose) return null;
 
-    const shoulderSpan = Math.hypot(ls.x - rs.x, ls.y - rs.y);
-    if (shoulderSpan <= 0.01) return null;     // skeleton is degenerate
+    const earL = pose[7], earR = pose[8];
+    const eyeL = pose[3], eyeR = pose[6];   // eye-outer corners
+    let headW = 0;
+    if (earL && earR) headW = Math.hypot(earL.x - earR.x, earL.y - earR.y);
+    else if (eyeL && eyeR) headW = Math.hypot(eyeL.x - eyeR.x, eyeL.y - eyeR.y) * 2.0;
+    if (headW < 0.02) {
+      const ls = pose[11], rs = pose[12];
+      if (!ls || !rs) return null;
+      const shoulderSpan = Math.hypot(ls.x - rs.x, ls.y - rs.y);
+      if (shoulderSpan <= 0.01) return null;
+      headW = shoulderSpan * 0.85;
+    }
 
-    const side = Math.min(Math.max(shoulderSpan * 2.8, 0.18), 0.9);
+    const side = Math.min(Math.max(headW * 2.1, 0.14), 0.9);
     const cx = nose.x;
-    // Shift centre slightly below the nose so face fills the upper portion
-    // with a thin slice of shoulders below — same composition as the legacy
-    // hand-bbox crop, just driven by the pose.
-    const cy = nose.y + side * 0.18;
+    const cy = nose.y - side * 0.06;   // shift up a touch so the whole head + forehead frames
     return this._clampSquareCrop(cx, cy, side);
   }
 
-  // Legacy fallback: square crop expanded from the hand bbox, biased upward
-  // so the face fills the top ~75 %. Used when Pose has no match for this
-  // hand (occluded torso, sitting user, edge of frame).
+  // No-face fallback: a square crop CENTRED on the detected hand (not biased
+  // upward to guess a face). Shows the hand region honestly when Pose couldn't
+  // match a body to the winning hand.
+  _handCenteredCrop(bbox) {
+    if (!bbox) return null;
+    const cx = bbox.x + bbox.w / 2;
+    const cy = bbox.y + bbox.h / 2;
+    const side = Math.min(Math.max(Math.max(bbox.w, bbox.h) * 2.6, 0.12), 0.9);
+    return this._clampSquareCrop(cx, cy, side);
+  }
+
+  // Legacy fallback (Pose not loaded at all): square crop expanded from the
+  // hand bbox, biased upward so a face would fill the top ~75 %.
   _handBboxCrop(bbox) {
     if (!bbox) return null;
     const cx = bbox.x + bbox.w / 2;

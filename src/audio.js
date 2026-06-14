@@ -1,12 +1,11 @@
 // Cabin audio — sourced CC0/CC-BY samples with a Web Audio synth FALLBACK.
 //
-// Discrete cues are short sample files (assets/audio/*.wav, see docs/audio-credits.md):
-//   playChime() → arrival cue (taxi slides in)
-//   playBoard() → boarding cue (rider taps → doors open)
-// The ambient bed (startAmbient/stopAmbient) stays SYNTHESIZED — it loops
-// seamlessly with no asset seams. If a sample hasn't loaded / can't decode
-// (e.g. iOS Safari quirk, offline), the cue falls back to the synth chime, so
-// audio never breaks.
+// All three are short sample files (assets/audio/*.wav, see docs/audio-credits.md):
+//   playChime()  → arrival cue (taxi slides in)
+//   playBoard()  → boarding cue (rider taps → doors open)
+//   startAmbient() → calm galactic background bed, looped
+// If a sample hasn't loaded / can't decode (e.g. iOS Safari quirk, offline), the
+// cue falls back to a synthesized version (chime / hum bed), so audio never breaks.
 //
 // AudioContext is created lazily on first user gesture (Space/keypress) to satisfy
 // browser autoplay policies. Gesture-driven plays may be silent on first load —
@@ -22,9 +21,9 @@ class CabinAudio {
     this._loadStarted = false;
     // ?v= keeps reloads fresh if a clip is ever swapped (matches the index.html scheme)
     this._samples = {
-      arrival: 'assets/audio/arrival.wav?v=step4',
-      board:   'assets/audio/board.wav?v=step4',
-      ambient: 'assets/audio/ambient.wav?v=step4',
+      arrival: 'assets/audio/arrival.wav?v=step5',
+      board:   'assets/audio/board.wav?v=step5',
+      ambient: 'assets/audio/ambient.wav?v=step5',
     };
   }
 
@@ -73,6 +72,15 @@ class CabinAudio {
     g.connect(this._master);
     src.start(ctx.currentTime);
     return true;
+  }
+
+  // Eagerly create the context + start fetching/decoding the samples at startup,
+  // so the FIRST arrival already has the real audio instead of falling back to
+  // the synth while the WAVs decode. The context starts suspended (no user
+  // gesture yet) — decodeAudioData still runs — and is resumed by the first
+  // interaction / playChime.
+  preload() {
+    this._ensureCtx();
   }
 
   // Unlock the audio context from a user gesture handler.
@@ -173,7 +181,7 @@ class CabinAudio {
     const t0 = ctx.currentTime;
     const out = ctx.createGain();
     out.gain.setValueAtTime(0.0001, t0);
-    out.gain.exponentialRampToValueAtTime(0.30, t0 + 1.2);   // audible-but-low hum bed
+    out.gain.exponentialRampToValueAtTime(0.40, t0 + 1.4);   // calm galactic pad, background level
     out.connect(this._master);
 
     const src = ctx.createBufferSource();

@@ -39,8 +39,9 @@ const _baseConfig = {
   // ── Gesture shape classifiers (rotation-invariant finger ratios) ─
   // ratio = dist(tip, mcp) / dist(pip, mcp). Straight finger ≈ 2.5–3, folded ≈ 0.5–1.2.
   // Orientation-independent, so a rotated open hand can't be mistaken for a fist.
-  fingerCurlRatioMax: 1.35,       // below this → finger counts as curled (thumbs-up needs ≥3 curled)
-  fingerExtendRatioMin: 1.8,      // above this → finger counts as extended (open palm needs ≥3 extended)
+  fingerExtendAngleDeg: 150,      // 3D PIP joint angle above this → finger STRAIGHT (open palm needs ALL 4). Robust vs the distance ratio a tight/out-of-plane curl can fake
+  fingerCurlAngleDeg: 125,        // 3D PIP joint angle below this → finger CURLED (thumbs-up needs ALL 4 curled — a fist). Generous so a real fist's fingers count; a non-thumb shape's extended finger reads ~170° and stays well above this
+  thumbExtendAngleDeg: 140,       // 3D thumb IP-joint angle above this → thumb extended (thumbs-up). Thumbs bend more than fingers, so a touch lower
   palmMaxTiltDeg: 40,             // open palm must point up within this angle of vertical (wiggle room; not rigidly vertical). Lower = stricter "hand up"
 
   // ── Multi-hand tracking ─────────────────────────────────────────

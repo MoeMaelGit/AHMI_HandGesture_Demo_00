@@ -973,7 +973,7 @@
       <div class="glow-layer glow-warm"></div>
       <div class="glow-layer glow-spec"></div>
     </div>
-    <img src="assets/taxi.svg?v=step4" alt="CacOOn autonomous taxi arriving">
+    <img src="assets/taxi.svg?v=step5" alt="CacOOn autonomous taxi arriving">
     <div id="car-interior"></div>
     <div class="door-panel" id="door-left"><span class="door-led"></span></div>
     <div class="door-panel" id="door-right"></div>
@@ -1015,14 +1015,14 @@
 
 <!-- ── App scripts (order matters) ─────────────────────────────────────── -->
 <!-- ?v= cache-busts changed files so reloads pick them up; bump on each edit -->
-<script src="src/tuner.js?v=step4"></script>      <!-- before config: seeds the learned baseline -->
-<script src="src/config.js?v=step4"></script>
-<script src="src/telemetry.js?v=step4"></script>
-<script src="src/audio.js?v=step4"></script>
-<script src="src/gesture.js?v=step4"></script>
-<script src="src/ui.js?v=step4"></script>
-<script src="src/animation.js?v=step4"></script>
-<script src="src/bridge.js?v=step4"></script>
+<script src="src/tuner.js?v=step5"></script>      <!-- before config: seeds the learned baseline -->
+<script src="src/config.js?v=step5"></script>
+<script src="src/telemetry.js?v=step5"></script>
+<script src="src/audio.js?v=step5"></script>
+<script src="src/gesture.js?v=step5"></script>
+<script src="src/ui.js?v=step5"></script>
+<script src="src/animation.js?v=step5"></script>
+<script src="src/bridge.js?v=step5"></script>
 
 <!-- ── Init & wiring ─────────────────────────────────────────────────────── -->
 <script>
@@ -1042,6 +1042,10 @@
   const detector  = new GestureDetector();
   const ui        = new UIController();
   const animation = new TaxiAnimation(document.getElementById('taxi-overlay'));
+  // Start fetching + decoding the audio samples now (not at the first chime), so
+  // the FIRST arrival plays the real cues/ambient instead of the synth fallback
+  // while the WAVs are still decoding.
+  try { animation.audio.preload(); } catch (_) {}
   const bridge    = new BridgeController();
   const telemetry = new TelemetryCollector();
   telemetry.attach(detector);

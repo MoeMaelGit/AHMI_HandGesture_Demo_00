@@ -725,15 +725,20 @@ class GestureDetector extends EventTarget {
 
   // ─── Gesture classifiers ──────────────────────────────────────────────────────
 
-  // Per-finger extension ratio: tip-to-MCP distance over PIP-to-MCP distance.
-  // A straight finger spans ~2.5–3× its first segment; a folded finger curls
-  // the tip back toward the knuckle so the ratio collapses below ~1.2. Computed
-  // from 2D distances, so it is invariant to hand rotation — unlike the old
-  // image-y comparisons that read a sideways open hand as a fist.
-  _fingerRatio(lm, mcp, pip, tip) {
-    const dTipMcp = Math.hypot(lm[tip].x - lm[mcp].x, lm[tip].y - lm[mcp].y);
-    const dPipMcp = Math.hypot(lm[pip].x - lm[mcp].x, lm[pip].y - lm[mcp].y);
-    return dTipMcp / (dPipMcp + 1e-6);
+  // Interior angle (degrees) at the PIP joint, formed by MCP→PIP and TIP→PIP,
+  // computed in 3D using MediaPipe's depth (z). A straight finger is ~160–180°;
+  // curling folds the tip back toward the palm so the angle collapses (<~100°).
+  // Using z is essential: a 2D-only angle is fooled when a finger curls TOWARD
+  // or AWAY from the camera — the curl projects to a short, near-straight line
+  // and reads as "extended", which let a fist/point/OK at certain hand angles
+  // start the hold. The 3D angle sees the out-of-plane bend. (z is ~same scale
+  // as x/y; falls back to 0 if a landmark lacks it.)
+  _fingerAngle(lm, mcp, pip, tip) {
+    const v1x = lm[mcp].x - lm[pip].x, v1y = lm[mcp].y - lm[pip].y, v1z = (lm[mcp].z || 0) - (lm[pip].z || 0);
+    const v2x = lm[tip].x - lm[pip].x, v2y = lm[tip].y - lm[pip].y, v2z = (lm[tip].z || 0) - (lm[pip].z || 0);
+    const dot = v1x * v2x + v1y * v2y + v1z * v2z;
+    const mag = Math.hypot(v1x, v1y, v1z) * Math.hypot(v2x, v2y, v2z) + 1e-6;
+    return Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180 / Math.PI;
   }
 
   // [mcp, pip, tip] landmark indices for the four non-thumb fingers.
@@ -745,11 +750,15 @@ class GestureDetector extends EventTarget {
     // Reject the thumbs-up shape first so a fist+thumb can't double-trigger.
     if (this._isThumbsUp(lm)) return false;
 
-    // ≥3 of 4 fingers genuinely extended (ratio-based, rotation-independent).
-    const extended = GestureDetector._FINGERS
-      .filter(([m, p, t]) => this._fingerRatio(lm, m, p, t) > CONFIG.fingerExtendRatioMin)
-      .length;
-    if (extended < 3) return false;
+    // ALL 4 fingers genuinely STRAIGHT (joint-angle based). A hail is a flat OPEN
+    // hand — every finger extended. Requiring 4/4 rejects non-palm shapes that
+    // raise some fingers (OK sign, one-finger point, fist). Straightness is the
+    // interior angle at the PIP joint (≈180° straight, collapses when curled);
+    // unlike a tip/pip distance ratio it can't be faked by a tight curl that
+    // collapses PIP→MCP and inflates the ratio.
+    const angles = GestureDetector._FINGERS.map(([m, p, t]) => this._fingerAngle(lm, m, p, t));
+    const extended = angles.filter((a) => a > CONFIG.fingerExtendAngleDeg).length;
+    if (extended < 4) return false;
 
     // Orientation gate: the palm must be RAISED and pointing UP within an angle
     // tolerance — an intentional hail, not a hand at rest, hanging, or held near
@@ -777,17 +786,17 @@ class GestureDetector extends EventTarget {
       lm[4].y < lm[13].y && lm[4].y < lm[17].y;
     if (!thumbUp) return false;
 
-    // Thumb genuinely extended (not a curled fist with the thumb merely highest).
-    const thumbExtended = this._fingerRatio(lm, 2, 3, 4) > CONFIG.fingerExtendRatioMin * 0.7;
-
-    // The fix: require ≥3 fingers actually folded, measured by curl ratio —
-    // a rotated open hand has high ratios and fails this, so it can no longer
-    // be mistaken for a thumbs-up.
+    // Thumb genuinely extended AND ALL 4 fingers curled (a thumbs-up is a fist) —
+    // both via the robust 3D joint angle (see _fingerAngle), so an out-of-plane
+    // curl/extend can't fake either side (the old tip/pip distance ratio could).
+    // Requiring 4/4 curled (was 3/4) rejects thumb-plus-one-finger shapes that
+    // also point a thumb up: a "shaka" (thumb+pinky), a finger-gun/"L"
+    // (thumb+index) — each leaves one finger clearly extended.
+    const thumbAngle = this._fingerAngle(lm, 2, 3, 4);
     const curled = GestureDetector._FINGERS
-      .filter(([m, p, t]) => this._fingerRatio(lm, m, p, t) < CONFIG.fingerCurlRatioMax)
+      .filter(([m, p, t]) => this._fingerAngle(lm, m, p, t) < CONFIG.fingerCurlAngleDeg)
       .length;
-
-    return thumbExtended && curled >= 3;
+    return thumbAngle > CONFIG.thumbExtendAngleDeg && curled >= 4;
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────

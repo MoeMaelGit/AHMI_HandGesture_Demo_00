@@ -21,9 +21,9 @@ class CabinAudio {
     this._loadStarted = false;
     // ?v= keeps reloads fresh if a clip is ever swapped (matches the index.html scheme)
     this._samples = {
-      arrival: 'assets/audio/arrival.wav?v=step5',
-      board:   'assets/audio/board.wav?v=step5',
-      ambient: 'assets/audio/ambient.wav?v=step5',
+      arrival: 'assets/audio/arrival.wav?v=step6',
+      board:   'assets/audio/board.wav?v=step6',
+      ambient: 'assets/audio/ambient.wav?v=step6',
     };
   }
 

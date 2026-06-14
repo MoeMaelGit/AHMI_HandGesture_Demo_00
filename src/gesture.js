@@ -741,6 +741,21 @@ class GestureDetector extends EventTarget {
     return Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180 / Math.PI;
   }
 
+  // Is a finger EXTENDED (reaching out) vs folded? True iff its TIP is farther
+  // from the wrist than its PIP joint — `dist(tip,wrist)/dist(pip,wrist) >
+  // fingerExtendReach`, in 3D. This is the robust test: it catches BOTH a PIP
+  // curl AND a knuckle (MCP) fold — the latter keeps each finger straight along
+  // its length (so a PIP-joint-angle test wrongly reads it as extended) yet
+  // folds the fingertip back toward the palm. Scale-invariant (ratio of two
+  // wrist distances → distance-independent). Measured: extended ≈ 1.27–1.45,
+  // folded ≈ 0.55–1.00, with a clean gap, so ~1.15 separates them.
+  _fingerExtended(lm, pip, tip) {
+    const w = lm[0];
+    const dTip = Math.hypot(lm[tip].x - w.x, lm[tip].y - w.y, (lm[tip].z || 0) - (w.z || 0));
+    const dPip = Math.hypot(lm[pip].x - w.x, lm[pip].y - w.y, (lm[pip].z || 0) - (w.z || 0));
+    return dTip / (dPip + 1e-6) > CONFIG.fingerExtendReach;
+  }
+
   // [mcp, pip, tip] landmark indices for the four non-thumb fingers.
   static get _FINGERS() {
     return [[5, 6, 8], [9, 10, 12], [13, 14, 16], [17, 18, 20]];
@@ -750,14 +765,10 @@ class GestureDetector extends EventTarget {
     // Reject the thumbs-up shape first so a fist+thumb can't double-trigger.
     if (this._isThumbsUp(lm)) return false;
 
-    // ALL 4 fingers genuinely STRAIGHT (joint-angle based). A hail is a flat OPEN
-    // hand — every finger extended. Requiring 4/4 rejects non-palm shapes that
-    // raise some fingers (OK sign, one-finger point, fist). Straightness is the
-    // interior angle at the PIP joint (≈180° straight, collapses when curled);
-    // unlike a tip/pip distance ratio it can't be faked by a tight curl that
-    // collapses PIP→MCP and inflates the ratio.
-    const angles = GestureDetector._FINGERS.map(([m, p, t]) => this._fingerAngle(lm, m, p, t));
-    const extended = angles.filter((a) => a > CONFIG.fingerExtendAngleDeg).length;
+    // ALL 4 fingers reaching out (a hail is a flat OPEN hand). Requiring 4/4
+    // rejects non-palm shapes that raise only some fingers (OK sign, point, fist).
+    const extended = GestureDetector._FINGERS
+      .filter(([m, p, t]) => this._fingerExtended(lm, p, t)).length;
     if (extended < 4) return false;
 
     // Orientation gate: the palm must be RAISED and pointing UP within an angle
@@ -786,17 +797,15 @@ class GestureDetector extends EventTarget {
       lm[4].y < lm[13].y && lm[4].y < lm[17].y;
     if (!thumbUp) return false;
 
-    // Thumb genuinely extended AND ALL 4 fingers curled (a thumbs-up is a fist) —
-    // both via the robust 3D joint angle (see _fingerAngle), so an out-of-plane
-    // curl/extend can't fake either side (the old tip/pip distance ratio could).
-    // Requiring 4/4 curled (was 3/4) rejects thumb-plus-one-finger shapes that
-    // also point a thumb up: a "shaka" (thumb+pinky), a finger-gun/"L"
-    // (thumb+index) — each leaves one finger clearly extended.
+    // Thumb extended (3D IP-joint angle) AND NO finger reaching out — using the
+    // same `_fingerExtended` reach test as the open palm. "No finger reaching"
+    // accepts a natural thumbs-up however the fingers fold (tight curl OR knuckle
+    // fold), while still rejecting thumb-plus-one-finger shapes whose extra finger
+    // points straight out: a "shaka" (thumb+pinky), a finger-gun/"L" (thumb+index).
     const thumbAngle = this._fingerAngle(lm, 2, 3, 4);
-    const curled = GestureDetector._FINGERS
-      .filter(([m, p, t]) => this._fingerAngle(lm, m, p, t) < CONFIG.fingerCurlAngleDeg)
-      .length;
-    return thumbAngle > CONFIG.thumbExtendAngleDeg && curled >= 4;
+    const extended = GestureDetector._FINGERS
+      .filter(([m, p, t]) => this._fingerExtended(lm, p, t)).length;
+    return thumbAngle > CONFIG.thumbExtendAngleDeg && extended === 0;
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────

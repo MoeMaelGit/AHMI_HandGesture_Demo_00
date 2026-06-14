@@ -36,11 +36,12 @@ const _baseConfig = {
   // ── Proximity & stability filters ───────────────────────────────
   minHandAreaFraction: 0.005,     // lowered for far-field hands at 1080p; warmup gate filters ghosts
 
-  // ── Gesture shape classifiers (rotation-invariant finger ratios) ─
-  // ratio = dist(tip, mcp) / dist(pip, mcp). Straight finger ≈ 2.5–3, folded ≈ 0.5–1.2.
-  // Orientation-independent, so a rotated open hand can't be mistaken for a fist.
-  fingerExtendAngleDeg: 150,      // 3D PIP joint angle above this → finger STRAIGHT (open palm needs ALL 4). Robust vs the distance ratio a tight/out-of-plane curl can fake
-  fingerCurlAngleDeg: 125,        // 3D PIP joint angle below this → finger CURLED (thumbs-up needs ALL 4 curled — a fist). Generous so a real fist's fingers count; a non-thumb shape's extended finger reads ~170° and stays well above this
+  // ── Gesture shape classifiers (3D, rotation-/scale-invariant) ─
+  // A finger is "extended" when its TIP reaches past its PIP joint relative to
+  // the wrist: dist(tip,wrist)/dist(pip,wrist) > fingerExtendReach (3D, uses z).
+  // Robust to both a PIP curl and a knuckle (MCP) fold. Measured separation:
+  // extended ≈ 1.27–1.45, folded ≈ 0.55–1.00.
+  fingerExtendReach: 1.15,        // tip/pip wrist-distance ratio above this → finger EXTENDED. Open palm needs ALL 4 extended; thumbs-up needs 0 (a fist, however the fingers fold). Lower if open palms miss far away; raise if folded fingers count as extended
   thumbExtendAngleDeg: 140,       // 3D thumb IP-joint angle above this → thumb extended (thumbs-up). Thumbs bend more than fingers, so a touch lower
   palmMaxTiltDeg: 40,             // open palm must point up within this angle of vertical (wiggle room; not rigidly vertical). Lower = stricter "hand up"
 

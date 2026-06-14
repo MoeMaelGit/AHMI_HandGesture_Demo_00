@@ -10,12 +10,15 @@ class TaxiAnimation {
     this.groundGlow  = overlayEl.querySelector('#ground-glow');
     this.msgEl       = overlayEl.querySelector('#taxi-msg');
     this.audio       = new CabinAudio();
-    this._onComplete = null;
+    this._onArrived  = null;
     this._timers = [];
   }
 
-  play(onComplete) {
-    this._onComplete = onComplete;
+  // Arrival only — taxi glides in, ground glow, message. The doors stay CLOSED:
+  // they open later, when the rider taps to board (see openDoors). `onArrived`
+  // fires once the taxi has settled, so the caller can arm the boarding tap.
+  play(onArrived) {
+    this._onArrived = onArrived;
     this._reset();
 
     this.overlay.classList.remove('hidden');
@@ -37,25 +40,28 @@ class TaxiAnimation {
       if (this.groundGlow) this.groundGlow.classList.add('active');
     });
 
-    // Phase 2 — left door swings open (0.2 s delay built into CSS transition)
-    this._after(CONFIG.taxiArrivalDurationMs * 0.38, () => {
-      if (this.doorLeft) this.doorLeft.classList.add('open');
-    });
-
-    // Phase 3 — right door swings open (staggered, 0.45 s delay in CSS)
-    this._after(CONFIG.taxiArrivalDurationMs * 0.42, () => {
-      if (this.doorRight) this.doorRight.classList.add('open');
-    });
-
-    // Phase 4 — interior glow + message (after doors are mostly open)
-    this._after(CONFIG.taxiArrivalDurationMs * 0.58, () => {
-      if (this.interior) this.interior.classList.add('lit');
+    // Phase 2 — arrival message (doors still closed, awaiting the boarding tap)
+    this._after(CONFIG.taxiArrivalDurationMs * 0.55, () => {
       this.msgEl.classList.add('visible');
     });
 
-    // Phase 5 — complete callback
+    // Phase 3 — arrived → ready for the rider to "place their card" and board
     this._after(CONFIG.taxiArrivalDurationMs, () => {
-      if (this._onComplete) this._onComplete();
+      if (this._onArrived) this._onArrived();
+    });
+  }
+
+  // Triggered when the rider taps to board: both doors slide open + the interior
+  // lights up, then the scene holds a few seconds before `onSettled` runs the
+  // handoff. CSS owns the door slide (staggered 0.2 s / 0.45 s delays, ~0.95 s
+  // each), so by boardingDoorHoldMs they're fully open and have lingered.
+  openDoors(onSettled) {
+    if (this.interior)  this.interior.classList.add('lit');
+    if (this.doorLeft)  this.doorLeft.classList.add('open');
+    if (this.doorRight) this.doorRight.classList.add('open');
+    try { this.audio.playChime(); } catch (_) {}
+    this._after(CONFIG.boardingDoorHoldMs, () => {
+      if (onSettled) onSettled();
     });
   }
 

@@ -644,6 +644,19 @@ class GestureDetector extends EventTarget {
     }
     if (!crop) return null;
 
+    // The crop is a normalized centre (cx,cy) + `side` expressed as a fraction
+    // of frame WIDTH. Build a SQUARE PIXEL source rect from it: using sidePx for
+    // both source dimensions keeps it square so the 280² output isn't stretched.
+    // (The old code passed a normalized square through `sw·videoWidth` /
+    // `sh·videoHeight`, which on a 1920×1080 frame is a 16:9 rect squished into
+    // the square canvas — faces came out horizontally stretched.)
+    const W = v.videoWidth, H = v.videoHeight;
+    let sidePx = Math.min(crop.side * W, W, H);
+    let sxPx = crop.cx * W - sidePx / 2;
+    let syPx = crop.cy * H - sidePx / 2;
+    sxPx = Math.max(0, Math.min(sxPx, W - sidePx));
+    syPx = Math.max(0, Math.min(syPx, H - sidePx));
+
     const out = document.createElement('canvas');
     out.width = 280;
     out.height = 280;
@@ -652,12 +665,7 @@ class GestureDetector extends EventTarget {
     octx.save();
     octx.translate(out.width, 0);
     octx.scale(-1, 1);
-    octx.drawImage(
-      v,
-      crop.sx * v.videoWidth, crop.sy * v.videoHeight,
-      crop.sw * v.videoWidth, crop.sh * v.videoHeight,
-      0, 0, out.width, out.height,
-    );
+    octx.drawImage(v, sxPx, syPx, sidePx, sidePx, 0, 0, out.width, out.height);
     octx.restore();
     return out;
   }
@@ -686,10 +694,12 @@ class GestureDetector extends EventTarget {
       headW = shoulderSpan * 0.85;
     }
 
-    const side = Math.min(Math.max(headW * 2.1, 0.14), 0.9);
+    // ×2.5 (was 2.1) leaves the head at ~40% of the crop — enough headroom that
+    // a close-up face isn't cropped tight at the forehead/chin ("too zoomed in").
+    const side = Math.min(Math.max(headW * 2.5, 0.16), 0.9);
     const cx = nose.x;
     const cy = nose.y - side * 0.06;   // shift up a touch so the whole head + forehead frames
-    return this._clampSquareCrop(cx, cy, side);
+    return { cx, cy, side };
   }
 
   // No-face fallback: a square crop CENTRED on the detected hand (not biased
@@ -700,7 +710,7 @@ class GestureDetector extends EventTarget {
     const cx = bbox.x + bbox.w / 2;
     const cy = bbox.y + bbox.h / 2;
     const side = Math.min(Math.max(Math.max(bbox.w, bbox.h) * 2.6, 0.12), 0.9);
-    return this._clampSquareCrop(cx, cy, side);
+    return { cx, cy, side };
   }
 
   // Legacy fallback (Pose not loaded at all): square crop expanded from the
@@ -710,20 +720,7 @@ class GestureDetector extends EventTarget {
     const cx = bbox.x + bbox.w / 2;
     const side = Math.max(bbox.w, bbox.h) * CONFIG.snapshotExpandFactor;
     const cy = (bbox.y + bbox.h / 2) - side * 0.25;
-    return this._clampSquareCrop(cx, cy, side);
-  }
-
-  _clampSquareCrop(cx, cy, side) {
-    let sx = cx - side / 2;
-    let sy = cy - side / 2;
-    let sw = side;
-    let sh = side;
-    if (sx < 0) { sw += sx; sx = 0; }
-    if (sy < 0) { sh += sy; sy = 0; }
-    if (sx + sw > 1) sw = 1 - sx;
-    if (sy + sh > 1) sh = 1 - sy;
-    if (sw <= 0 || sh <= 0) return null;
-    return { sx, sy, sw, sh };
+    return { cx, cy, side };
   }
 
   // ─── Gesture classifiers ──────────────────────────────────────────────────────

@@ -55,7 +55,8 @@ const _baseConfig = {
   lowConfidenceConsecutiveFrames: 30,
 
   // ── Animation & display ─────────────────────────────────────────
-  taxiArrivalDurationMs: 3200,    // total taxi sequence duration
+  taxiArrivalDurationMs: 3200,    // arrival sequence (slide-in → ground glow → message); doors stay CLOSED
+  boardingDoorHoldMs: 3200,       // after the rider taps to board: doors slide open (~1.4 s) then hold, before handoff
   cancelledDisplayMs: 1800,       // how long "cancelled" shows before reset
 
 };

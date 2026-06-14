@@ -367,12 +367,20 @@
       width: 100%;
       height: auto;
     }
+    /* Boarding-armed: the pod becomes the "tap your card here to enter" target.
+       Breathes a warmer drop-shadow + pointer cursor to invite the tap. (Animates
+       filter only — never transform — so it can't fight the slide-in transition.) */
+    #taxi-wrap.boarding-armed { cursor: pointer; animation: pod-breathe 2.2s ease-in-out infinite; }
+    @keyframes pod-breathe {
+      0%, 100% { filter: drop-shadow(0 8px 48px rgba(197,169,97,0.30)); }
+      50%       { filter: drop-shadow(0 10px 64px rgba(197,169,97,0.58)); }
+    }
 
     /* ── Door panels — Zoox-style sliding doors over the new pod SVG ────── */
     .door-panel {
       position: absolute;
-      top: 19%;
-      height: 65%;
+      top: 35.3%;
+      height: 36.5%;
       background:
         linear-gradient(180deg,
           #0a0908 0%,
@@ -407,8 +415,8 @@
     }
 
     #door-left {
-      left: 25%;
-      width: 25%;
+      left: 26%;
+      width: 24%;
       border-right: 1px solid rgba(180, 188, 200, 0.45);
       transform-origin: right center;
       transform: translateX(0) rotateY(0deg);
@@ -418,7 +426,7 @@
 
     #door-right {
       left: 50%;
-      width: 25%;
+      width: 24%;
       border-left: 1px solid rgba(180, 188, 200, 0.45);
       transform-origin: left center;
       transform: translateX(0) rotateY(0deg);
@@ -439,10 +447,10 @@
     /* Interior cabin glow — warm amber light revealed when doors slide open */
     #car-interior {
       position: absolute;
-      left: 25%;
-      top: 19%;
-      width: 50%;
-      height: 65%;
+      left: 26%;
+      top: 35.3%;
+      width: 48%;
+      height: 36.5%;
       background:
         linear-gradient(180deg,
           rgba(255, 215, 130, 0.55) 0%,
@@ -569,37 +577,49 @@
       50%       { opacity: 0.4; transform: scale(0.8); }
     }
 
-    /* ── Pickup card (top-left of taxi overlay — shows the winning user) ──── */
+    /* ── Pickup card — "boarding pass": framed snapshot + headline + NFC tap ─
+       Anchored left of the centred pod, vertically centred. The NFC button is
+       the instruction; the actual tap target is the pod (see #taxi-wrap.boarding-armed). */
     #pickup-card {
       position: absolute;
-      top: 26px;
-      left: 26px;
-      padding: 14px;
+      top: 50%;
+      left: 44px;
+      padding: 18px;
       display: flex;
-      gap: 16px;
-      align-items: center;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 15px;
+      width: 304px;
       opacity: 0;
-      transform: translate(-12px, 0);
+      transform: translate(-18px, -50%);
       transition: opacity 0.6s ease 0.2s, transform 0.6s var(--ease-out) 0.2s;
-      z-index: 2;
-      max-width: 380px;
+      z-index: 3;
     }
     #pickup-card.visible {
       opacity: 1;
-      transform: translate(0, 0);
+      transform: translate(0, -50%);
+    }
+    #pickup-card .pickup-frame {
+      width: 100%;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(197, 169, 97, 0.40);
+      box-shadow: 0 0 24px rgba(197, 169, 97, 0.26), inset 0 0 0 1px rgba(0,0,0,0.4);
+      background: #0a0a0c;
+      line-height: 0;
     }
     #pickup-card #pickup-snapshot {
-      width: 160px;
-      height: 160px;
-      border-radius: 14px;
-      border: 1px solid rgba(197, 169, 97, 0.40);
-      box-shadow: 0 0 22px rgba(197, 169, 97, 0.30);
-      background: #0a0a0c;
+      display: block;
+      width: 100%;
+      aspect-ratio: 1 / 1;   /* square — matches the square crop, never stretches */
+      height: auto;
     }
     #pickup-card .pickup-meta {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      align-items: center;
+      gap: 5px;
+      text-align: center;
     }
     #pickup-card .pickup-label {
       font-size: 9px;
@@ -608,21 +628,52 @@
       text-transform: uppercase;
       color: var(--orange);
     }
+    #pickup-card .pickup-headline {
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      color: var(--text);
+      text-shadow: 0 0 18px rgba(197, 169, 97, 0.22);
+    }
     #pickup-card .pickup-id {
       font-family: var(--font-mono);
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: 1.6px;
-      color: var(--text);
-    }
-    #pickup-card .pickup-sub {
-      font-family: var(--font-mono);
-      font-size: 9px;
+      font-size: 12px;
       font-weight: 500;
-      letter-spacing: 1.6px;
+      letter-spacing: 1.8px;
       color: var(--dim);
-      text-transform: uppercase;
-      margin-top: 2px;
+    }
+    /* NFC "place your card to enter" pill */
+    .nfc-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(32, 30, 25, 0.62);
+      color: var(--accent);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .nfc-btn .nfc-icon { flex: 0 0 auto; display: inline-flex; }
+    .nfc-btn .nfc-icon svg { width: 22px; height: 22px; color: var(--accent); }
+    .nfc-btn .nfc-text { flex: 1 1 auto; }
+    .nfc-btn.armed { animation: nfc-pulse 1.9s ease-in-out infinite; }
+    @keyframes nfc-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(197,169,97,0); border-color: var(--border); }
+      50%       { box-shadow: 0 0 18px 1px rgba(197,169,97,0.30); border-color: rgba(197,169,97,0.55); }
+    }
+    .nfc-btn.entering {
+      animation: none;
+      color: var(--text);
+      border-color: rgba(197, 169, 97, 0.65);
+      box-shadow: 0 0 20px 1px rgba(197,169,97,0.35);
     }
 
     /* ── Warning overlays ────────────────────────────────────────────────── */
@@ -759,11 +810,21 @@
       .hand-overlay .hand-thumb { font-size: 28px; }
       .hand-overlay .hand-prompt-text { font-size: 9px; letter-spacing: 1.2px; padding: 3px 7px; }
 
-      /* Pickup card: compact, fits a phone corner */
-      #pickup-card { top: 14px; left: 14px; padding: 9px; gap: 10px; max-width: calc(100vw - 28px); }
-      #pickup-card #pickup-snapshot { width: 92px; height: 92px; border-radius: 11px; }
-      #pickup-card .pickup-id { font-size: 12px; }
+      /* Boarding card centred at the top; pod + message drop to the bottom */
+      #taxi-overlay { justify-content: flex-end; padding-bottom: 7vh; gap: 18px; }
+      #taxi-wrap { width: min(380px, 86vw); }
+      #pickup-card {
+        top: 16px; left: 50%;
+        width: min(280px, 90vw);
+        padding: 14px; gap: 11px;
+        transform: translate(-50%, -16px);
+      }
+      #pickup-card.visible { transform: translate(-50%, 0); }
+      #pickup-card .pickup-headline { font-size: 18px; }
+      #pickup-card .pickup-id { font-size: 11px; }
       #pickup-card .pickup-label { letter-spacing: 3px; }
+      #pickup-card .nfc-btn { font-size: 12px; padding: 11px 14px; }
+      #pickup-card .nfc-btn .nfc-icon svg { width: 20px; height: 20px; }
 
       /* Arrival message + ETA scale down */
       .msg-brand { font-size: 9px; letter-spacing: 5px; }
@@ -775,6 +836,50 @@
       .warning-overlay .warn-icon { font-size: 42px; }
       .warning-overlay h2 { font-size: 18px; }
       .warning-overlay p  { font-size: 13px; }
+    }
+
+    /* ── Short / landscape screens (phones held sideways) ──────────────────
+       The portrait breakpoint keys on max-width, so a sideways phone (wide but
+       only ~380px tall) never matched it: the taxi is sized purely by width
+       (min(560px, 90vw)), so on a short viewport it overflowed vertically and
+       collided with the corner pickup card. Constrain the taxi by viewport
+       HEIGHT and compact the surrounding chrome so the whole arrival scene fits
+       between top and bottom. */
+    @media (max-height: 500px) and (orientation: landscape) {
+      #status-dot { top: 10px; left: 12px; font-size: 9px; }
+      #brand-badge { top: 9px; right: 12px; }
+      #brand-badge .brand-text { font-size: 10px; letter-spacing: 2.5px; }
+
+      #panel-idle { bottom: 16px; padding: 9px 16px; max-width: calc(100vw - 28px); white-space: normal; text-align: center; }
+      #panel-idle .hand-icon { font-size: 18px; }
+      #panel-idle span { font-size: 12px; }
+
+      .hand-overlay { width: 88px; height: 112px; }
+      .hand-overlay .hand-ring { width: 88px; height: 88px; }
+      .hand-overlay .hand-center { top: 44px; }
+      .hand-overlay .hand-pct { font-size: 13px; }
+      .hand-overlay .hand-thumb { font-size: 26px; }
+
+      /* Taxi scene: cap by height so taxi + message stack inside the viewport */
+      #taxi-overlay { gap: 14px; }
+      #taxi-wrap { width: min(440px, 90vw, 82vh); }
+      .msg-brand { font-size: 8px; letter-spacing: 4px; margin-bottom: 2px; }
+      .msg-main { font-size: clamp(16px, 4vh, 22px); }
+      .msg-sub { font-size: 9px; letter-spacing: 2px; margin-top: 3px; }
+      .msg-eta { font-size: 9px; padding: 5px 12px; margin-top: 8px; }
+
+      /* Boarding card: compact on the left, vertically centred, clears the pod */
+      #pickup-card { left: 14px; width: 184px; padding: 11px; gap: 9px; }
+      #pickup-card .pickup-headline { font-size: 15px; }
+      #pickup-card .pickup-id { font-size: 10px; }
+      #pickup-card .pickup-label { letter-spacing: 3px; }
+      #pickup-card .nfc-btn { font-size: 11px; padding: 9px 11px; gap: 9px; }
+      #pickup-card .nfc-btn .nfc-icon svg { width: 18px; height: 18px; }
+
+      .warning-overlay { padding: 18px; gap: 10px; }
+      .warning-overlay .warn-icon { font-size: 34px; }
+      .warning-overlay h2 { font-size: 16px; }
+      .warning-overlay p  { font-size: 12px; }
     }
 
   </style>
@@ -841,12 +946,25 @@
 
   <!-- Pickup card — populated on CONFIRMED with the winning user's snapshot -->
   <div id="pickup-card" class="glass">
-    <canvas id="pickup-snapshot" width="280" height="280"></canvas>
-    <div class="pickup-meta">
-      <span class="pickup-label">Pickup</span>
-      <span class="pickup-id" id="pickup-id">ID ----</span>
-      <span class="pickup-sub">Lock-on confirmed</span>
+    <div class="pickup-frame">
+      <canvas id="pickup-snapshot" width="280" height="280"></canvas>
     </div>
+    <div class="pickup-meta">
+      <span class="pickup-label">Pickup confirmed</span>
+      <span class="pickup-headline">Welcome aboard</span>
+      <span class="pickup-id" id="pickup-id">ID ----</span>
+    </div>
+    <button id="boarding-nfc" class="nfc-btn" type="button">
+      <span class="nfc-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <circle cx="7" cy="12" r="1.3" fill="currentColor" stroke="none"/>
+          <path d="M11 8.4 a5 5 0 0 1 0 7.2"/>
+          <path d="M14 6 a9 9 0 0 1 0 12"/>
+          <path d="M17 3.8 a13 13 0 0 1 0 16.4"/>
+        </svg>
+      </span>
+      <span class="nfc-text" id="boarding-nfc-text">Place your card here to enter</span>
+    </button>
   </div>
 
   <div id="taxi-wrap" style="position:relative">
@@ -855,7 +973,7 @@
       <div class="glow-layer glow-warm"></div>
       <div class="glow-layer glow-spec"></div>
     </div>
-    <img src="assets/taxi.svg" alt="CacOOn autonomous taxi arriving">
+    <img src="assets/taxi.svg?v=step3" alt="CacOOn autonomous taxi arriving">
     <div id="car-interior"></div>
     <div class="door-panel" id="door-left"><span class="door-led"></span></div>
     <div class="door-panel" id="door-right"></div>
@@ -896,14 +1014,15 @@
 <script src="vendor/mediapipe/drawing_utils/drawing_utils.js"></script>
 
 <!-- ── App scripts (order matters) ─────────────────────────────────────── -->
-<script src="src/tuner.js"></script>      <!-- before config: seeds the learned baseline -->
-<script src="src/config.js"></script>
-<script src="src/telemetry.js"></script>
-<script src="src/audio.js"></script>
-<script src="src/gesture.js"></script>
-<script src="src/ui.js"></script>
-<script src="src/animation.js"></script>
-<script src="src/bridge.js"></script>
+<!-- ?v= cache-busts changed files so reloads pick them up; bump on each edit -->
+<script src="src/tuner.js?v=step3"></script>      <!-- before config: seeds the learned baseline -->
+<script src="src/config.js?v=step3"></script>
+<script src="src/telemetry.js?v=step3"></script>
+<script src="src/audio.js?v=step3"></script>
+<script src="src/gesture.js?v=step3"></script>
+<script src="src/ui.js?v=step3"></script>
+<script src="src/animation.js?v=step3"></script>
+<script src="src/bridge.js?v=step3"></script>
 
 <!-- ── Init & wiring ─────────────────────────────────────────────────────── -->
 <script>
@@ -952,7 +1071,53 @@
     statusLbl.textContent = `LOCKED · ID ${hexId(id)}`;
     ui.clearHands();
     ui.showPickup(hexId(id), snapshot);
-    animation.play(() => {
+    // The arrival plays, then waits: the rider "taps their card" on the pod to
+    // board. No auto-advance — the scene holds until that tap (or Space).
+    animation.play(() => armBoarding());
+  });
+
+  // ── Boarding tap-to-enter ───────────────────────────────────────────────
+  // Once the arrival animation settles, the pod (and the card's NFC button)
+  // become the "place your card here to enter" target. Tapping shows a brief
+  // "Entering…" confirmation, then runs the original handoff: bridge.trigger()
+  // closes the tab in presenter mode / resets to IDLE for the audience QR.
+  const taxiWrapEl = document.getElementById('taxi-wrap');
+  const nfcBtnEl   = document.getElementById('boarding-nfc');
+  const nfcTextEl  = document.getElementById('boarding-nfc-text');
+  let boardingArmed = false;
+
+  function armBoarding() {
+    if (boardingArmed) return;
+    boardingArmed = true;
+    if (taxiWrapEl) {
+      taxiWrapEl.classList.add('boarding-armed');
+      taxiWrapEl.addEventListener('click', enterBoarding);
+    }
+    if (nfcBtnEl) {
+      nfcBtnEl.classList.remove('entering');
+      nfcBtnEl.classList.add('armed');
+      if (nfcTextEl) nfcTextEl.textContent = 'Place your card here to enter';
+      nfcBtnEl.addEventListener('click', enterBoarding);
+    }
+  }
+
+  function enterBoarding() {
+    if (!boardingArmed) return;
+    boardingArmed = false;
+    if (taxiWrapEl) {
+      taxiWrapEl.classList.remove('boarding-armed');
+      taxiWrapEl.removeEventListener('click', enterBoarding);
+    }
+    if (nfcBtnEl) {
+      nfcBtnEl.removeEventListener('click', enterBoarding);
+      nfcBtnEl.classList.remove('armed');
+      nfcBtnEl.classList.add('entering');
+      if (nfcTextEl) nfcTextEl.textContent = 'Boarding…';
+    }
+
+    // Tap accepted → NOW the doors slide open and hold a few seconds, then the
+    // original handoff runs (presenter tab-close / audience reset-to-IDLE).
+    animation.openDoors(() => {
       bridge.trigger();
       setTimeout(() => {
         animation.hide();
@@ -960,9 +1125,10 @@
         bridge.reset();
         detector.resetToIdle();
         statusLbl.textContent = 'SCANNING';
-      }, 3000);
+        if (nfcBtnEl) nfcBtnEl.classList.remove('entering');
+      }, 600);
     });
-  });
+  }
 
   detector.addEventListener('warning', ({ detail: { type } }) => {
     ui.showWarning(type);
@@ -970,16 +1136,13 @@
 
   // ── Space bar fallback ──────────────────────────────────────────────────
   bridge.setupSpaceFallback(() => {
+    // While the arrival is waiting for the boarding tap, Space acts as that tap.
+    if (boardingArmed) { enterBoarding(); return; }
     telemetry.recordSpace();   // detection failed the user → "loosen" signal for the tuner
     document.getElementById('warn-camera').classList.add('hidden');
     document.getElementById('warn-mediapipe').classList.add('hidden');
-    animation.play(() => {
-      bridge.trigger();
-      setTimeout(() => {
-        animation.hide();
-        bridge.reset();
-      }, 3000);
-    });
+    // Manual trigger: play the arrival, then arm the pod for the tap-to-board.
+    animation.play(() => armBoarding());
   });
 
   // ── Audio unlock — first user gesture wakes the AudioContext.

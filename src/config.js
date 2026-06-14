@@ -22,6 +22,7 @@ const _baseConfig = {
   poseMinTracking: 0.50,
   wristMatchMaxDist: 0.12,        // normalized distance to associate a Hands wrist to a Pose wrist
   poseMissFramesToLoosen: 30,     // frames Pose must show a raised-but-untracked hand before signalling the tuner to loosen (~1 s at 30 fps)
+  poseRaisedMargin: 0.02,         // normalized y-margin for "wrist above elbow" = a raised arm (Pose-assisted spawn + sticky tracking)
 
   // ── Gesture timing ──────────────────────────────────────────────
   gestureHoldMs: 2000,            // palm hold → PROMPTING; thumbs-up hold → CONFIRMED

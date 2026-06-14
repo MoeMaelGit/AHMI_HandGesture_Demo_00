@@ -247,6 +247,16 @@ class GestureDetector extends EventTarget {
       usedCurrent.add(p.ci);
       const t = trackArr[p.ti];
       const c = currentHands[p.ci];
+      // Resume after a Hands dropout (sticky tracking kept this track alive while
+      // Pose confirmed the arm was up): pause the gesture timer across the gap so
+      // the re-acquired countdown continues smoothly instead of jumping — a long
+      // freeze must never instantly complete a 2 s hold.
+      if (t.lostAt) {
+        const gap = Date.now() - t.lostAt;
+        if (t.holdStart) t.holdStart += gap;
+        if (t.promptStart) t.promptStart += gap;
+        t.lostAt = null;
+      }
       t.matchedThisFrame = true;
       t.matchedFrameCount++;
       t.lastSeenFrame = this._frameCount;
@@ -262,7 +272,10 @@ class GestureDetector extends EventTarget {
       // Min-area gate applies only to NEW tracks — rejects tiny background
       // hand-like detections from spawning phantom tracks. Existing tracks
       // already matched above bypass this, so curling/distance can't drop them.
-      if (c.area < CONFIG.minHandAreaFraction) continue;
+      // Far-field assist: a sub-threshold (small/distant) hand is still admitted
+      // when Pose vouches that a real raised arm is there — a poster/reflection
+      // has no body, so noise is still rejected.
+      if (c.area < CONFIG.minHandAreaFraction && !this._poseRaisedWristNear(c.wrist)) continue;
       const id = this._nextId++;
       const newTrack = {
         id,
@@ -272,6 +285,7 @@ class GestureDetector extends EventTarget {
         confirmDropFrames: 0,
         detectDropFrames: 0,
         awaitingPalm: false,
+        lostAt: null,           // Date.now() while unmatched mid-gesture (sticky timer pause)
         matchedFrameCount: 1,
         lastSeenFrame: this._frameCount,
         landmarks: c.lm,
@@ -328,38 +342,63 @@ class GestureDetector extends EventTarget {
   _resetStaleGestures() {
     for (const t of this._tracks.values()) {
       if (t.matchedThisFrame || t.state === 'IDLE' || t.id === this._winnerId) continue;
-      if (this._frameCount - t.lastSeenFrame > CONFIG.gestureStaleFrames) {
-        t.holdStart = null;
-        t.promptStart = null;
-        t.detectDropFrames = 0;
-        t.confirmDropFrames = 0;
-        t.awaitingPalm = false;
-        this._setTrackState(t, 'IDLE');   // emits handStateChange → UI removes the overlay
-      }
+      // Stamp when the Hands dropout began, so the timer can be paused across it.
+      if (!t.lostAt) t.lostAt = Date.now();
+      if (this._frameCount - t.lastSeenFrame <= CONFIG.gestureStaleFrames) continue;   // brief flicker — wait it out
+      // Sticky: Pose still shows a raised arm here → Hands just lost a small or
+      // curled hand at distance, not a departure. Keep the gesture; it rides the
+      // normal trackMissingMaxFrames prune window instead of resetting. The
+      // phantom-hand-off fix is preserved: dropping your hand lowers the arm →
+      // Pose no longer raised → the reset below fires → no inheritance.
+      if (this._poseRaisedWristNear(t.wrist)) continue;
+      t.holdStart = null;
+      t.promptStart = null;
+      t.detectDropFrames = 0;
+      t.confirmDropFrames = 0;
+      t.awaitingPalm = false;
+      t.lostAt = null;
+      this._setTrackState(t, 'IDLE');   // emits handStateChange → UI removes the overlay
     }
   }
 
-  // True when a Pose skeleton shows a raised hand (wrist above its elbow) that
-  // no Hands track is sitting near. Pose sees the whole person even at distances
-  // where the Hands model can't lock the small hand, so this is a genuine
-  // "the hand model is missing a real hand" signal.
-  _raisedHandMissed() {
+  // Every Pose wrist currently raised above its elbow ({x,y} each). Pose sees the
+  // whole person even at distances where the Hands model can't lock the small
+  // hand, so these are ground-truth "a real hand is here, and up" anchors.
+  _raisedPoseWrists() {
+    const out = [];
     const pose = this._latestPose;
-    if (!pose || !pose.landmarks) return false;
+    if (!pose || !pose.landmarks) return out;
     for (const sk of pose.landmarks) {
       // (wrist, elbow) index pairs — 15/13 left, 16/14 right.
       for (const [wi, ei] of [[15, 13], [16, 14]]) {
         const wrist = sk[wi], elbow = sk[ei];
         if (!wrist || !elbow) continue;
-        if (wrist.y >= elbow.y - 0.02) continue;   // hand not raised above the elbow
-        let tracked = false;
-        for (const t of this._tracks.values()) {
-          if (Math.hypot(t.wrist.x - wrist.x, t.wrist.y - wrist.y) <= CONFIG.wristMatchMaxDist) {
-            tracked = true; break;
-          }
-        }
-        if (!tracked) return true;
+        if (wrist.y < elbow.y - CONFIG.poseRaisedMargin) out.push(wrist);   // wrist above elbow → raised
       }
+    }
+    return out;
+  }
+
+  // True if a raised Pose wrist is within wristMatchMaxDist of `point` — i.e.
+  // Pose vouches that a real, raised hand is at this spot even if Hands didn't
+  // report one (far/small/curled). Used to admit far hands and to keep an
+  // in-gesture track alive through brief Hands dropouts.
+  _poseRaisedWristNear(point) {
+    for (const w of this._raisedPoseWrists()) {
+      if (Math.hypot(w.x - point.x, w.y - point.y) <= CONFIG.wristMatchMaxDist) return true;
+    }
+    return false;
+  }
+
+  // True when a raised Pose wrist has NO Hands track sitting near it — a genuine
+  // "the hand model is missing a real hand" signal for the adaptive Tuner.
+  _raisedHandMissed() {
+    for (const w of this._raisedPoseWrists()) {
+      let tracked = false;
+      for (const t of this._tracks.values()) {
+        if (Math.hypot(t.wrist.x - w.x, t.wrist.y - w.y) <= CONFIG.wristMatchMaxDist) { tracked = true; break; }
+      }
+      if (!tracked) return true;
     }
     return false;
   }

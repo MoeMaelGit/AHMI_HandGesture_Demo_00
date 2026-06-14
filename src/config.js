@@ -24,6 +24,10 @@ const _baseConfig = {
   poseMissFramesToLoosen: 30,     // frames Pose must show a raised-but-untracked hand before signalling the tuner to loosen (~1 s at 30 fps)
   poseRaisedMargin: 0.02,         // normalized y-margin for "wrist above elbow" = a raised arm (Pose-assisted spawn + sticky tracking)
 
+  // ── Ambient luminance (lighting-aware tuning) ───────────────────
+  luminanceSampleEveryFrames: 30, // sample mean frame brightness this often (~1 s at 30 fps) — a single 0–1 number, never a stored frame
+  darkLumaThreshold: 0.25,        // below this mean luma → "dim room" → tuner loosens detection confidence rather than area
+
   // ── Gesture timing ──────────────────────────────────────────────
   gestureHoldMs: 2000,            // palm hold → PROMPTING; thumbs-up hold → CONFIRMED
   confirmationTimeoutMs: 8000,    // PROMPTING timeout → CANCELLED

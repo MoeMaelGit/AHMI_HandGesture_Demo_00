@@ -20,8 +20,24 @@
 const Tuner = (() => {
   'use strict';
 
-  const LEARNED_KEY = 'cacoon.tune.learned';
-  const SESSIONS_KEY = 'cacoon.tele.sessions';   // owned by telemetry.js; we only clear it
+  const LEARNED_KEY = 'cacoon.tune.learned';        // legacy single-baseline (migrated then ignored)
+  const LEARNED_KEY_V2 = 'cacoon.tune.learned.v2';  // { "<deviceKey>": {minDet,minTrack,minArea} }
+  const SESSIONS_KEY = 'cacoon.tele.sessions';      // owned by telemetry.js; we only clear it
+
+  // Coarse device class — a phone front camera and a laptop webcam differ enough
+  // that they should learn separate baselines. Kept coarse (~≤8 buckets) so each
+  // bucket still accumulates enough signal.
+  function _deviceKey() {
+    const ua = navigator.userAgent || '';
+    const os = /Windows/.test(ua) ? 'win'
+      : /Android/.test(ua) ? 'android'
+      : /iPhone|iPad|iPod/.test(ua) ? 'ios'
+      : /Mac OS X/.test(ua) ? 'mac'
+      : /Linux/.test(ua) ? 'linux' : 'other';
+    const small = Math.min(screen.width || 9999, screen.height || 9999) < 820;
+    const mobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || ((navigator.maxTouchPoints || 0) > 1 && small);
+    return os + '-' + (mobile ? 'mobile' : 'desktop');
+  }
 
   // [min, max] and the discrete step used for a single tick's nudge.
   const BOUNDS = {
@@ -61,11 +77,15 @@ const Tuner = (() => {
     for (const k of KEYS) _defaults[k] = base[k];
 
     if (_params.has('reset-tuning')) {
-      try { localStorage.removeItem(LEARNED_KEY); localStorage.removeItem(SESSIONS_KEY); } catch (_) {}
+      try {
+        localStorage.removeItem(LEARNED_KEY_V2);
+        localStorage.removeItem(LEARNED_KEY);
+        localStorage.removeItem(SESSIONS_KEY);
+      } catch (_) {}
     }
 
     if (!_params.has('notune') && !_params.has('reset-tuning')) {
-      const learned = readJSON(LEARNED_KEY, null);
+      const learned = _loadLearned();   // baseline for THIS device class (with one-time migration)
       if (learned) {
         for (const k of KEYS) {
           if (typeof learned[k] === 'number') base[k] = round(k, clamp(k, learned[k]));
@@ -77,6 +97,20 @@ const Tuner = (() => {
     return base;
   }
 
+  // Load this device class's learned baseline. One-time migration: if the v2 map
+  // has no entry yet but the legacy single baseline exists, seed this device from it.
+  function _loadLearned() {
+    const map = readJSON(LEARNED_KEY_V2, null);
+    const key = _deviceKey();
+    if (map && map[key]) return map[key];
+    const legacy = readJSON(LEARNED_KEY, null);
+    if (legacy) {
+      writeJSON(LEARNED_KEY_V2, { ...(map || {}), [key]: legacy });
+      return legacy;
+    }
+    return null;
+  }
+
   // ─── Run-time: the adaptive feedback loop ──────────────────────────────────
   function startAdaptiveLoop(telemetry, detector) {
     // Push the (possibly learned) starting detection params to MediaPipe once.
@@ -84,7 +118,7 @@ const Tuner = (() => {
 
     if (_params && (_params.has('notune') || _params.has('reset-tuning'))) {
       // Pinned to defaults: no adaptation, no learning. Still show the panel.
-      if (_params.has('show-tuning')) _renderPanel(telemetry, 'pinned (?notune)');
+      if (_params.has('show-tuning')) _renderPanel(detector, 'pinned (?notune)', null, null);
       return;
     }
 
@@ -92,39 +126,55 @@ const Tuner = (() => {
     window.addEventListener('pagehide', persist);
     detector.addEventListener('confirmed', persist);
 
-    setInterval(() => {
-      const sig = telemetry.getLiveSignals();
-      const action = _decide(sig);
-      if (action !== 'hold') _nudge(action, detector);
-      if (_params.has('show-tuning')) _renderPanel(telemetry, action);
-    }, TICK_MS);
+    setInterval(() => _tick(telemetry, detector), TICK_MS);
   }
 
-  // Decide a single bounded action from the live signals.
-  function _decide(sig) {
+  // One adaptive iteration: read signals + luminance, decide, nudge the right
+  // lever, refresh the panel. Returns { action, lever } (exposed as _tickOnce
+  // for tests).
+  function _tick(telemetry, detector) {
+    const sig = telemetry.getLiveSignals();
+    const luma = typeof detector.getLuminance === 'function' ? detector.getLuminance() : null;
+    const { action, lever } = _decide(sig, luma);
+    if (action !== 'hold') _nudge(action, lever, detector);
+    if (_params && _params.has('show-tuning')) _renderPanel(detector, action, lever, luma);
+    return { action, lever };
+  }
+
+  // Decide a bounded action AND which lever to move, from the live signals +
+  // ambient luminance. Routing the loosen to the right threshold is what makes
+  // the tuner "smart": a dim room is a confidence problem, a far hand is a size
+  // problem — loosening all three blindly is wasteful and can over-loosen.
+  function _decide(sig, luma) {
     const struggling =
-      // Cold start: camera up a while and no hand has ever been tracked.
-      (sig.msSinceStart > STRUGGLE_AFTER_MS && !sig.handsEverDetected) ||
-      // User fell back to the Space bar — detection failed them.
-      sig.spaceSinceLastPoll ||
-      // Pose sees a raised hand the Hands model is missing (far-field / low
-      // light). Fires even after an earlier detection, so it keeps adapting
-      // when the user steps back — and stays silent during idle.
-      sig.poseMissSinceLastPoll;
-    if (struggling) return 'loosen';
+      (sig.msSinceStart > STRUGGLE_AFTER_MS && !sig.handsEverDetected) ||   // cold start
+      sig.spaceSinceLastPoll ||                                              // Space fallback
+      sig.poseMissSinceLastPoll;                                            // Pose sees a hand Hands missed
+    if (struggling) {
+      const dark = luma !== null && luma !== undefined && luma < CONFIG.darkLumaThreshold;
+      let lever;
+      if (dark) lever = 'confidence';                       // dim room → MediaPipe under-confident
+      else if (sig.poseMissSinceLastPoll) lever = 'area';   // well-lit but a real hand is too small/far
+      else lever = 'all';                                   // generic (Space / cold-start, normal light)
+      return { action: 'loosen', lever };
+    }
 
     // Phantom-trigger proxy (the only client-side false-positive signal we have):
     // tracks appear almost instantly but get abandoned without confirming.
     const phantom = sig.lastTtfd !== null && sig.lastTtfd < 800 && sig.recentAbandons >= 2;
-    if (phantom) return 'tighten';
+    if (phantom) return { action: 'tighten', lever: 'all' };
 
-    return 'hold';
+    return { action: 'hold', lever: null };
   }
 
-  // Apply one bounded step in the chosen direction, then push to MediaPipe.
-  function _nudge(action, detector) {
+  // Apply one bounded step in the chosen direction, but only to the keys the
+  // lever selects. Per-key step/clamp is unchanged.
+  function _nudge(action, lever, detector) {
     const dir = action === 'loosen' ? -1 : +1;   // loosen = lower confidence thresholds
-    for (const k of KEYS) {
+    const keysToMove =
+      lever === 'confidence' ? ['minDetectionConfidence', 'minTrackingConfidence'] :
+      lever === 'area' ? ['minHandAreaFraction'] : KEYS;
+    for (const k of keysToMove) {
       if (k === 'minHandAreaFraction') {
         const factor = action === 'loosen' ? AREA_LOOSEN : AREA_TIGHTEN;
         CONFIG[k] = round(k, clamp(k, CONFIG[k] * factor));
@@ -145,15 +195,18 @@ const Tuner = (() => {
     if (typeof detector.setDetectionParams === 'function') detector.setDetectionParams(det, track);
   }
 
-  // Blend the current effective values into the persisted learned baseline.
+  // Blend the current effective values into THIS device class's learned baseline.
   function _persistLearned() {
-    const prev = readJSON(LEARNED_KEY, null) || _defaults;
+    const map = readJSON(LEARNED_KEY_V2, {}) || {};
+    const key = _deviceKey();
+    const prev = map[key] || _defaults;
     const next = {};
     for (const k of KEYS) {
       const blended = (1 - EMA_ALPHA) * prev[k] + EMA_ALPHA * CONFIG[k];
       next[k] = round(k, clamp(k, blended));
     }
-    writeJSON(LEARNED_KEY, next);
+    map[key] = next;
+    writeJSON(LEARNED_KEY_V2, map);
   }
 
   // ─── ?show-tuning debug panel ──────────────────────────────────────────────
@@ -175,14 +228,20 @@ const Tuner = (() => {
 
   // Does NOT poll telemetry — getLiveSignals() consumes edge flags, and the
   // adaptive loop already consumed them this tick. Renders CONFIG state only.
-  function _renderPanel(_telemetry, lastAction) {
+  function _renderPanel(detector, lastAction, lever, luma) {
     const sessions = readJSON(SESSIONS_KEY, []);
-    const learned = readJSON(LEARNED_KEY, null);
+    const key = _deviceKey();
+    const learned = (readJSON(LEARNED_KEY_V2, {}) || {})[key] || null;
+    const lum = luma != null ? luma
+      : (detector && typeof detector.getLuminance === 'function' ? detector.getLuminance() : null);
     const overrides = {};
     for (const k of KEYS) {
       if (_defaults && CONFIG[k] !== _defaults[k]) overrides[k] = `${_defaults[k]} → ${CONFIG[k]}`;
     }
     _lastSummary = {
+      device: key,
+      luma: lum,
+      lever,
       sessions: sessions.length,
       lastAction,
       effective: KEYS.reduce((o, k) => (o[k] = CONFIG[k], o), {}),
@@ -192,8 +251,10 @@ const Tuner = (() => {
     window.__cacoonTuning = _lastSummary;
     if (_panel) {
       _panel.textContent =
-        'CacOOn tuner  ·  ' + (lastAction || '—') + '\n' +
-        'sessions: ' + sessions.length + '\n' +
+        'CacOOn tuner  ·  ' + (lastAction || '—') + (lever ? ' [' + lever + ']' : '') + '\n' +
+        'device   : ' + key + '\n' +
+        'luma     : ' + (lum == null ? '—' : lum.toFixed(2)) + '\n' +
+        'sessions : ' + sessions.length + '\n' +
         'minDet   : ' + CONFIG.minDetectionConfidence + '\n' +
         'minTrack : ' + CONFIG.minTrackingConfidence + '\n' +
         'minArea  : ' + CONFIG.minHandAreaFraction + '\n' +
@@ -201,5 +262,7 @@ const Tuner = (() => {
     }
   }
 
-  return { initBaseline, startAdaptiveLoop };
+  // _tickOnce is _tick, exposed for tests (drive one iteration with a fake
+  // telemetry + detector and assert the routing).
+  return { initBaseline, startAdaptiveLoop, _tickOnce: _tick };
 })();

@@ -17,6 +17,7 @@ class TelemetryCollector {
     this._MAX_SESSIONS = 50;
 
     this._sessionStart = Date.now();
+    this._detector = null;   // set in attach(); used to sample luminance at persist
 
     // Per-session accumulators.
     this._firstDetectAt = null;   // ms timestamp of first DETECTING
@@ -43,6 +44,7 @@ class TelemetryCollector {
   }
 
   attach(detector) {
+    this._detector = detector;   // for sampling ambient luminance at persist time
     detector.addEventListener('handStateChange', ({ detail: { state, prev } }) => {
       if (state === 'DETECTING' && this._firstDetectAt === null) {
         this._firstDetectAt = Date.now();
@@ -120,6 +122,10 @@ class TelemetryCollector {
       vw: window.innerWidth,
       vh: window.innerHeight,
       dpr: window.devicePixelRatio || 1,
+      // Ambient brightness at session end (0–1, or null). Device class is
+      // reconstructable from browser/os/vw above — no separate key needed.
+      luminance: (this._detector && typeof this._detector.getLuminance === 'function')
+        ? this._detector.getLuminance() : null,
     };
 
     try {

@@ -36,6 +36,12 @@ class GestureDetector extends EventTarget {
     this._lastTrackCount = 0;
     this._missStreak = 0;        // consecutive frames Pose sees a raised hand the Hands model missed
 
+    // Ambient luminance (lighting-aware tuning). A single mean 0–1 number,
+    // sampled from a tiny downscale of the frame — never a stored image.
+    this._luminance = null;      // null until first sample
+    this._lumaCanvas = null;
+    this._lumaCtx = null;
+
     // Global lock-on / lifecycle
     this._winnerId = null;
     this._locked = false;        // true while CONFIRMED animation plays
@@ -217,6 +223,7 @@ class GestureDetector extends EventTarget {
     }
 
     this._checkRaisedHandMiss();
+    if (this._frameCount % CONFIG.luminanceSampleEveryFrames === 0) this._sampleLuminance();
 
     this._drawTracks();
   }
@@ -418,6 +425,32 @@ class GestureDetector extends EventTarget {
       this._missStreak = 0;
     }
   }
+
+  // Mean ambient brightness (0–1) from a 16×16 downscale of the current frame.
+  // Privacy-safe: only the average number is kept — no pixels/frames are stored.
+  // The adaptive Tuner uses it to tell a dim room (loosen detection confidence)
+  // from a far hand in good light (loosen the area threshold).
+  _sampleLuminance() {
+    const v = this._video;
+    if (!v || !v.videoWidth) return;
+    if (!this._lumaCanvas) {
+      this._lumaCanvas = document.createElement('canvas');
+      this._lumaCanvas.width = 16;
+      this._lumaCanvas.height = 16;
+      this._lumaCtx = this._lumaCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    try {
+      this._lumaCtx.drawImage(v, 0, 0, 16, 16);
+      const d = this._lumaCtx.getImageData(0, 0, 16, 16).data;
+      let sum = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      }
+      this._luminance = sum / (d.length / 4) / 255;   // 0–1
+    } catch (_) { /* keep last value (e.g. transient draw error) */ }
+  }
+
+  getLuminance() { return this._luminance; }
 
   // ─── Per-hand state machine ──────────────────────────────────────────────────
 

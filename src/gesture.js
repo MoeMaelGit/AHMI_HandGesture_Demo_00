@@ -606,17 +606,19 @@ class GestureDetector extends EventTarget {
   }
 
   _trackColors(t) {
+    // Black/gold theme: gold for active/winning states, muted grey when idle
+    // (minimal jewel-accent). Gold #dbc07c (bright) / #c5a961 (soft).
     if (t.id === this._winnerId) {
-      return { line: '#ff7e00', dot: '#ff7e00', dotFill: 'rgba(255,126,0,0.85)', lineWidth: 3.5, radius: 6 };
+      return { line: '#dbc07c', dot: '#dbc07c', dotFill: 'rgba(219,192,124,0.85)', lineWidth: 3.5, radius: 6 };
     }
     switch (t.state) {
       case 'PROMPTING':
       case 'CONFIRMING':
-        return { line: '#ff7e00', dot: '#ff7e00', dotFill: 'rgba(255,126,0,0.55)', lineWidth: 2.5, radius: 5 };
+        return { line: '#dbc07c', dot: '#dbc07c', dotFill: 'rgba(219,192,124,0.55)', lineWidth: 2.5, radius: 5 };
       case 'DETECTING':
-        return { line: '#ffb066', dot: '#ff7e00', dotFill: 'rgba(255,126,0,0.45)', lineWidth: 2.5, radius: 5 };
+        return { line: '#c5a961', dot: '#dbc07c', dotFill: 'rgba(219,192,124,0.45)', lineWidth: 2.5, radius: 5 };
       default:
-        return { line: '#4fc3f7', dot: '#4fc3f7', dotFill: 'rgba(79,195,247,0.45)', lineWidth: 2, radius: 4 };
+        return { line: '#9a9a9f', dot: '#c5a961', dotFill: 'rgba(197,169,97,0.40)', lineWidth: 2, radius: 4 };
     }
   }
 

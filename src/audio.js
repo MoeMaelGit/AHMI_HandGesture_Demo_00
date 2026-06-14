@@ -1,9 +1,16 @@
-// Web Audio API synthesis — no asset files needed.
-// Two cues: arrival chime (2-tone bell on slide-in) and ambient hum (sub-bass bed).
+// Cabin audio — sourced CC0/CC-BY samples with a Web Audio synth FALLBACK.
+//
+// Discrete cues are short sample files (assets/audio/*.wav, see docs/audio-credits.md):
+//   playChime() → arrival cue (taxi slides in)
+//   playBoard() → boarding cue (rider taps → doors open)
+// The ambient bed (startAmbient/stopAmbient) stays SYNTHESIZED — it loops
+// seamlessly with no asset seams. If a sample hasn't loaded / can't decode
+// (e.g. iOS Safari quirk, offline), the cue falls back to the synth chime, so
+// audio never breaks.
 //
 // AudioContext is created lazily on first user gesture (Space/keypress) to satisfy
 // browser autoplay policies. Gesture-driven plays may be silent on first load —
-// acceptable per plan; the chime will fire on subsequent runs.
+// acceptable per plan; the cue will fire on subsequent runs.
 
 class CabinAudio {
   constructor() {
@@ -11,6 +18,14 @@ class CabinAudio {
     this._ambientNodes = null;
     this._master = null;
     this._enabled = true;
+    this._buffers = {};         // key → decoded AudioBuffer
+    this._loadStarted = false;
+    // ?v= keeps reloads fresh if a clip is ever swapped (matches the index.html scheme)
+    this._samples = {
+      arrival: 'assets/audio/arrival.wav?v=step4',
+      board:   'assets/audio/board.wav?v=step4',
+      ambient: 'assets/audio/ambient.wav?v=step4',
+    };
   }
 
   _ensureCtx() {
@@ -26,7 +41,38 @@ class CabinAudio {
       this._enabled = false;
       return null;
     }
+    this._loadSamples();
     return this._ctx;
+  }
+
+  // Fetch + decode the cue samples once the context exists. Best-effort: any
+  // failure just leaves the buffer absent and the cue falls back to synth.
+  _loadSamples() {
+    if (this._loadStarted || !this._ctx) return;
+    this._loadStarted = true;
+    for (const [key, url] of Object.entries(this._samples)) {
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((ab) => this._ctx.decodeAudioData(ab))
+        .then((buf) => { this._buffers[key] = buf; })
+        .catch(() => {});
+    }
+  }
+
+  // Play a decoded sample. Returns false if it isn't available (→ caller falls back).
+  _playBuffer(key, gain) {
+    const ctx = this._ctx;
+    const buf = this._buffers[key];
+    if (!ctx || !buf) return false;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const src = ctx.createBufferSource();
+    const g = ctx.createGain();
+    src.buffer = buf;
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(this._master);
+    src.start(ctx.currentTime);
+    return true;
   }
 
   // Unlock the audio context from a user gesture handler.
@@ -39,12 +85,27 @@ class CabinAudio {
     }
   }
 
-  // ── Arrival chime ──────────────────────────────────────────────────────
-  // Two stacked sine partials with a soft attack and 1.2s decay.
-  // Reads as a clean, futuristic "ding" without being intrusive.
+  // ── Arrival cue ────────────────────────────────────────────────────────
+  // Sourced soft welcoming tone (CC0/CC-BY). Falls back to the synth chime.
   playChime() {
     if (!this._enabled) return;
-    const ctx = this._ensureCtx();
+    if (!this._ensureCtx()) return;
+    if (this._playBuffer('arrival', 0.85)) return;
+    this._synthChime();
+  }
+
+  // ── Boarding cue ───────────────────────────────────────────────────────
+  // Sourced warm resolved confirmation, played when the doors open on tap.
+  playBoard() {
+    if (!this._enabled) return;
+    if (!this._ensureCtx()) return;
+    if (this._playBuffer('board', 0.95)) return;
+    this._synthChime();
+  }
+
+  // Synth fallback — two stacked sine partials with a soft attack and ~1.4s decay.
+  _synthChime() {
+    const ctx = this._ctx;
     if (!ctx) return;
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 
@@ -101,6 +162,31 @@ class CabinAudio {
     if (this._ambientNodes) return;
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 
+    // Prefer the sourced ambient loop; fall back to the synth bed if it hasn't
+    // loaded / can't decode.
+    if (this._buffers.ambient) { this._startSampleAmbient(ctx); return; }
+    this._startSynthAmbient(ctx);
+  }
+
+  // Sourced ambient bed — seamless crossfade loop, gentle fade-in.
+  _startSampleAmbient(ctx) {
+    const t0 = ctx.currentTime;
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t0);
+    out.gain.exponentialRampToValueAtTime(0.30, t0 + 1.2);   // audible-but-low hum bed
+    out.connect(this._master);
+
+    const src = ctx.createBufferSource();
+    src.buffer = this._buffers.ambient;
+    src.loop = true;
+    src.connect(out);
+    src.start(t0);
+
+    this._ambientNodes = { out, sample: src };
+  }
+
+  // Synth fallback ambient — low triangle hum + a fifth above + slow LFO breathe.
+  _startSynthAmbient(ctx) {
     const t0 = ctx.currentTime;
     const out = ctx.createGain();
     out.gain.setValueAtTime(0.0001, t0);
@@ -146,9 +232,10 @@ class CabinAudio {
       nodes.out.gain.cancelScheduledValues(t1);
       nodes.out.gain.setValueAtTime(nodes.out.gain.value, t1);
       nodes.out.gain.exponentialRampToValueAtTime(0.0001, t1 + 0.5);
-      nodes.osc1.stop(t1 + 0.6);
-      nodes.osc2.stop(t1 + 0.6);
-      nodes.lfo.stop(t1 + 0.6);
+      if (nodes.sample) nodes.sample.stop(t1 + 0.6);   // sourced loop
+      if (nodes.osc1)   nodes.osc1.stop(t1 + 0.6);     // synth fallback
+      if (nodes.osc2)   nodes.osc2.stop(t1 + 0.6);
+      if (nodes.lfo)    nodes.lfo.stop(t1 + 0.6);
     } catch (_) {}
     this._ambientNodes = null;
   }

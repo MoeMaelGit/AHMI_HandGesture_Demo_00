@@ -59,7 +59,7 @@ class TaxiAnimation {
     if (this.interior)  this.interior.classList.add('lit');
     if (this.doorLeft)  this.doorLeft.classList.add('open');
     if (this.doorRight) this.doorRight.classList.add('open');
-    try { this.audio.playChime(); } catch (_) {}
+    try { this.audio.playBoard(); } catch (_) {}
     this._after(CONFIG.boardingDoorHoldMs, () => {
       if (onSettled) onSettled();
     });

@@ -13,7 +13,7 @@
 
 class TelemetryCollector {
   constructor() {
-    this._SESSIONS_KEY = 'cacoon.tele.sessions';
+    this._SESSIONS_KEY = 'cocoon.tele.sessions';
     this._MAX_SESSIONS = 50;
 
     this._sessionStart = Date.now();

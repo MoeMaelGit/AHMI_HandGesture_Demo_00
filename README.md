@@ -1,6 +1,6 @@
-# CacOOn Cabin — Gesture Hailing Demo
+# Cocoon Cabin — Gesture Hailing Demo
 
-A browser-based hand gesture hailing prototype for the **CacOOn Cabin** robotaxi interior UX/HMI project (Group 6, AHMI module).
+A browser-based hand gesture hailing prototype for the **Cocoon Cabin** robotaxi interior UX/HMI project (Group 6, AHMI module).
 
 Raise an open palm in front of your webcam, then a thumbs-up to confirm — a Zoox-style pearl pod taxi glides in, doors slide open, and an arrival message is presented through an OLED-glass HMI panel.
 
@@ -80,4 +80,4 @@ Then open `http://127.0.0.1:8765/` in Chrome or Edge. `127.0.0.1` (not `localhos
 
 ## Credits
 
-Built for the AHMI Master's module — Group 6, *CacOOn Cabin*.
+Built for the AHMI Master's module — Group 6, *Cocoon Cabin*.

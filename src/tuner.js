@@ -20,9 +20,9 @@
 const Tuner = (() => {
   'use strict';
 
-  const LEARNED_KEY = 'cacoon.tune.learned';        // legacy single-baseline (migrated then ignored)
-  const LEARNED_KEY_V2 = 'cacoon.tune.learned.v2';  // { "<deviceKey>": {minDet,minTrack,minArea} }
-  const SESSIONS_KEY = 'cacoon.tele.sessions';      // owned by telemetry.js; we only clear it
+  const LEARNED_KEY = 'cocoon.tune.learned';        // legacy single-baseline (migrated then ignored)
+  const LEARNED_KEY_V2 = 'cocoon.tune.learned.v2';  // { "<deviceKey>": {minDet,minTrack,minArea} }
+  const SESSIONS_KEY = 'cocoon.tele.sessions';      // owned by telemetry.js; we only clear it
 
   // Coarse device class — a phone front camera and a laptop webcam differ enough
   // that they should learn separate baselines. Kept coarse (~≤8 buckets) so each
@@ -248,10 +248,10 @@ const Tuner = (() => {
       overrides,
       learned,
     };
-    window.__cacoonTuning = _lastSummary;
+    window.__cocoonTuning = _lastSummary;
     if (_panel) {
       _panel.textContent =
-        'CacOOn tuner  ·  ' + (lastAction || '—') + (lever ? ' [' + lever + ']' : '') + '\n' +
+        'Cocoon tuner  ·  ' + (lastAction || '—') + (lever ? ' [' + lever + ']' : '') + '\n' +
         'device   : ' + key + '\n' +
         'luma     : ' + (lum == null ? '—' : lum.toFixed(2)) + '\n' +
         'sessions : ' + sessions.length + '\n' +
